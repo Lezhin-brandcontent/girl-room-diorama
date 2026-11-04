@@ -87,7 +87,7 @@ const INFO = {
   tv:        { label:"TV",      view:[0, 0.05, 1], fill:"tv_body", videos:true, tag:"VIDEO", title:"영상", body:"보고 싶은 영상을 골라 보세요." },
   diary:     { label:"NOVEL",   book:true, dist:2.0, btnText:"작품 보러가기 →", link:"https://www.bomtoon.com/bom/novel/main" },   // 책으로 다가가 펼침 → 봄툰 소설 한 편 + 작품 보러가기
   bookshelf: { label:"BOOKS",   zoom:true, view:[0, 0.12, 1], dist:8 },     // 패널 없이 책장으로 다가가기만 (책을 눌러 작품 보기)
-  window:    { label:"WINDOW",  tag:"EVENT",     title:"이벤트",     body:"창밖 — 오픈 이벤트·알림 신청 자리.",            cta:"알림 신청" },
+  window:    { get label() { return isNight ? "DAY" : "NIGHT"; }, toggle:"night" },   // 창문: 눌러서 낮↔밤 (밤이면 스탠드·미니전구 자동 켜짐)
   frame:     { label:"POSTER",  view:[0, 0.05, 1], dist:6.5, img:"diorama/frame.jpg", tag:"NOTICE",    title:"공지",       body:"액자 — 최신 공지/키비주얼을 거는 자리.",         cta:"공지 보기" },
   lamp:      { label:"LAMP",    toggle:true },
   fairy:     { label:"LIGHTS",  toggle:"fairy" },   // 벽 미니전구: 눌러서 켜고 끄기   // 패널 없이 불 켜고 끄기
@@ -207,7 +207,8 @@ new GLTFLoader().load("diorama/girl_room.glb?v=" + Date.now(), (gltf) => {
     // 실제 광원은 전구보다 벽에서 떨어진 책상 앞쪽·아래에 둬서 벽에 하얀 얼룩이 생기지 않게
     lampLight.position.copy(halo.position).add(new THREE.Vector3(-0.2, -0.2, 0.45));
   }   // 노드 원점이 아니라 실제 전구 위치
-  setLamp(true, true);   // 시작은 불 켜진 상태
+  setupNightSky();
+  setLamp(false, true);   // 시작은 불 끈 낮 (창문을 눌러 밤으로)
   setupFairy();
   gsap.to("#loading", { opacity:0, duration:.5, onComplete:() => document.getElementById("loading").remove() });
   // 입장 연출: 살짝 돌면서 등장
@@ -372,37 +373,77 @@ function bounce(id) {
   gsap.fromTo(p.root.scale, { x:p.baseS.x * 1.12, y:p.baseS.y * .88, z:p.baseS.z * 1.12 },
     { x:p.baseS.x, y:p.baseS.y, z:p.baseS.z, duration:.6, ease:"elastic.out(1,.4)" });
 }
-// ---------- 스탠드 ON/OFF: 방 전체 분위기 전환 ----------
-// ON(기본) = 평소 밝기 + 스탠드 주변만 은은하게 / OFF = 방 전체 명도를 살짝 낮춤
-const MOOD = {
-  on:  { sun:1.3,  sunC:0xfff3ea, hemi:.35, hemiC:0xffffff, env:.4,  lamp:.3, halo:0, night:0,   bulb:{ r:1, g:.82, b:.45 }, sky:0x8ccbf5 },
-  off: { sun:.95,  sunC:0xe6e6f5, hemi:.26, hemiC:0xe8e8ff, env:.28, lamp:0,  halo:0,   night:.22, bulb:{ r:0, g:0, b:0 }, sky:0x6f9fcf },
+// ---------- 방 분위기: 낮/밤 + 스탠드 + 미니전구 ----------
+// 낮/밤이 방의 기본 밝기를 정하고, 스탠드·미니전구는 그 위에 빛을 더함
+// (예전엔 '스탠드 꺼짐 = 방 어두움'이라 불 끈 낮이 칙칙했음)
+const TIME = {
+  day:   { sun:1.3, sunC:0xfff3ea, hemi:.35, hemiC:0xffffff, env:.4,  night:0,   sky:0x8ccbf5, lamp:.3, halo:0 },
+  night: { sun:.45, sunC:0x9fb0ff, hemi:.2,  hemiC:0xc4ccff, env:.24, night:.34, sky:0x1c2452, lamp:.75, halo:.35 },
 };
+const BULB_ON = { r:1, g:.82, b:.45 }, BULB_OFF = { r:0, g:0, b:0 };
+const WARM = 0xffd2b0;   // 미니전구가 켜지면 방 빛을 이 색 쪽으로 살짝 데움
 const rgb = (hex) => { const c = new THREE.Color(hex); return { r:c.r, g:c.g, b:c.b }; };
-let lampOn = false, fairyOn = false;
+let isNight = false, lampOn = false, fairyOn = false;
 const envK = { v:.4 };
-// 미니전구가 켜져 있으면 방 전체를 살짝 저녁 톤으로 낮춰 전구가 빛나 보이게 함
-const DIM = { sun:.62, hemi:.6, env:.6, night:.16, warm:0xffdfe6, sky:0x5d86b8 };
+const NIGHT_T = 1.5;   // 낮↔밤 전환 시간(초)
 function setLamp(on, instant) { lampOn = on; applyMood(instant); }
-function applyMood(instant) {
-  const b = lampOn ? MOOD.on : MOOD.off, d = instant ? 0 : .6, f = fairyOn;
-  const sunC = f ? new THREE.Color(b.sunC).lerp(new THREE.Color(DIM.warm), .6) : new THREE.Color(b.sunC);
-  gsap.to(sun, { intensity: b.sun * (f ? DIM.sun : 1), duration:d });
+function setNight(on) {
+  isNight = on;
+  lampOn = on;          // 밤이 되면 불이 켜지고, 낮이 되면 꺼짐 (그 뒤엔 각자 눌러서 끄고 켤 수 있음)
+  setFairy(on, false, NIGHT_T);
+}
+function applyMood(instant, dur = .6) {
+  const t = isNight ? TIME.night : TIME.day, d = instant ? 0 : dur, f = fairyOn;
+  // 미니전구: 낮엔 살짝만, 밤엔 방 빛을 따뜻하게 물들임
+  const warmK = f ? (isNight ? .45 : .2) : 0;
+  const sunC = new THREE.Color(t.sunC).lerp(new THREE.Color(WARM), warmK);
+  const hemiC = new THREE.Color(t.hemiC).lerp(new THREE.Color(WARM), warmK);
+  gsap.to(sun, { intensity: t.sun * (f && !isNight ? .85 : 1), duration:d });
   gsap.to(sun.color, { r:sunC.r, g:sunC.g, b:sunC.b, duration:d });
-  gsap.to(hemi, { intensity: b.hemi * (f ? DIM.hemi : 1), duration:d });
-  gsap.to(hemi.color, { ...rgb(b.hemiC), duration:d });
-  gsap.to(lampLight, { intensity:b.lamp, duration:d });
-  gsap.to(halo.material, { opacity:b.halo, duration:d });
-  gsap.to("#night", { opacity: Math.min(.4, b.night + (f ? DIM.night : 0)), duration:d });
-  gsap.to(envK, { v: b.env * (f ? DIM.env : 1), duration:d, onUpdate:() => scene.traverse(o => {
+  gsap.to(hemi, { intensity: t.hemi * (f && isNight ? 1.25 : 1), duration:d });
+  gsap.to(hemi.color, { r:hemiC.r, g:hemiC.g, b:hemiC.b, duration:d });
+  gsap.to(lampLight, { intensity: lampOn ? t.lamp : 0, duration:d });
+  gsap.to(halo.material, { opacity: lampOn ? t.halo : 0, duration:d });
+  gsap.to("#night", { opacity: t.night, duration:d });
+  gsap.to(envK, { v: t.env, duration:d, onUpdate:() => scene.traverse(o => {
     if (!o.isMesh) return;
     (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => { if ("envMapIntensity" in mt) mt.envMapIntensity = envK.v; });
   }) });
-  const sky = scene.getObjectByName("win_sky");   // 창밖도 같이 어두워짐
-  const skyC = f ? DIM.sky : b.sky;
-  if (sky) { gsap.to(sky.material.color, { ...rgb(skyC), duration:d }); gsap.to(sky.material.emissive, { ...rgb(skyC), duration:d }); }
+  const sky = scene.getObjectByName("win_sky");
+  if (sky) { gsap.to(sky.material.color, { ...rgb(t.sky), duration:d }); gsap.to(sky.material.emissive, { ...rgb(t.sky), duration:d }); }
+  if (nightSky) gsap.to(nightSky.material, { opacity: isNight ? 1 : 0, duration:d });
   const bulb = scene.getObjectByName("lamp_bulb");
-  if (bulb) { bulb.userData.glow = b.bulb; gsap.to(bulb.material.emissive, { ...b.bulb, duration:d }); }
+  const bc = lampOn ? BULB_ON : BULB_OFF;
+  if (bulb) { bulb.userData.glow = bc; gsap.to(bulb.material.emissive, { ...bc, duration:d }); }
+}
+// ---------- 창밖 밤하늘: 별 + 초승달 (창 유리 바로 앞에 겹친 투명 판) ----------
+let nightSky = null;
+function setupNightSky() {
+  const glass = scene.getObjectByName("win_sky");
+  if (!glass) return;
+  const W = 320, H = 256, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;   // 매번 같은 별자리
+  for (let i = 0; i < 70; i++) {
+    const r = rnd() < .85 ? .8 + rnd() * .8 : 1.6 + rnd() * 1.2;
+    g.fillStyle = `rgba(255,250,235,${.45 + rnd() * .55})`;
+    g.beginPath(); g.arc(rnd() * W, rnd() * H, r, 0, Math.PI * 2); g.fill();
+  }
+  // 초승달: 큰 원에서 살짝 비킨 원을 지워서 만듦
+  const mx = W * .72, my = H * .28, mr = 26;
+  g.fillStyle = "#fff6d8"; g.shadowColor = "rgba(255,240,200,.8)"; g.shadowBlur = 18;
+  g.beginPath(); g.arc(mx, my, mr, 0, Math.PI * 2); g.fill();
+  g.shadowBlur = 0; g.globalCompositeOperation = "destination-out";
+  g.beginPath(); g.arc(mx + 11, my - 7, mr * .9, 0, Math.PI * 2); g.fill();
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  // 유리의 실제 크기·위치에 맞춤. 유리는 왼쪽 벽(+x 방향을 바라봄)에 붙어 있음
+  const box = new THREE.Box3().setFromObject(glass), sz = box.getSize(new THREE.Vector3());
+  nightSky = new THREE.Mesh(new THREE.PlaneGeometry(sz.z, sz.y),
+    new THREE.MeshBasicMaterial({ map:tex, transparent:true, opacity:0, depthWrite:false, toneMapped:false }));
+  nightSky.rotation.y = Math.PI / 2;
+  box.getCenter(nightSky.position); nightSky.position.x = box.max.x + 0.002;
+  nightSky.userData.prop = "window";   // 밤하늘을 눌러도 창문 클릭으로
+  scene.add(nightSky); glass.attach(nightSky);   // 창문과 같이 움직이게
 }
 // ---------- 미니전구: 전구마다 작은 빛 번짐 + 켜지면 방 전체 톤다운 ----------
 const FAIRY_ON = { r:1, g:.78, b:.42 }, FAIRY_OFF = { r:0, g:0, b:0 };
@@ -431,22 +472,22 @@ function setupFairy() {
     m.add(s); fairyGlows.push(s);
     sum.add(new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3())); n++;
   });
-  setFairy(true, true);   // 시작은 켜진 상태
+  setFairy(false, true);
 }
-function setFairy(on, instant) {
+function setFairy(on, instant, dur = .5) {
   fairyOn = on;
-  const d = instant ? 0 : .5, col = on ? FAIRY_ON : FAIRY_OFF;
+  const d = instant ? 0 : dur, col = on ? FAIRY_ON : FAIRY_OFF;
   props.fairy.meshes.forEach((m, i) => {
     if (!m.name.startsWith("fairy_b_")) return;
     m.userData.glow = col;
     gsap.to(m.material.emissive, { ...col, duration:d, delay: instant ? 0 : i * 0.012 });   // 줄을 따라 차례로 켜짐
   });
   fairyGlows.forEach((s, i) => gsap.to(s.material, { opacity: on ? .7 : 0, duration:d, delay: instant ? 0 : i * 0.012 }));
-  applyMood(instant);   // 전구 켜짐 = 방 톤다운, 꺼짐 = 원래 밝기
+  applyMood(instant, Math.max(dur, .6));
 }
 function activate(id) {
   const info = infoOf(id);
-  if (info.toggle !== "fairy") bounce(id);   // 가랜드는 방 전체에 걸쳐 있어 튕기면 어색함
+  if (!info.toggle || info.toggle === true) bounce(id);   // 가랜드·창문은 벽에 붙어 있어 튕기면 어색함
   if (info.go) { window.open(info.go, "_blank", "noopener"); return; }
   if (info.link) {   // 1번째 클릭: 화면 정면으로 이동 → 도착하면 '사이트 들어가기' 버튼
     if (focused === id) return;
@@ -465,7 +506,8 @@ function activate(id) {
     return;
   }
   if (info.toggle) {
-    if (info.toggle === "fairy") setFairy(!fairyOn); else setLamp(!lampOn);
+    if (info.toggle === "night") { setNight(!isNight); tip.textContent = info.label; }
+    else if (info.toggle === "fairy") setFairy(!fairyOn); else setLamp(!lampOn);
     return;
   }
   if (info.zoom) {
