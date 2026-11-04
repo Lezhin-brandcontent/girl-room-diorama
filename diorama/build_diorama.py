@@ -390,12 +390,6 @@ for r_ in range(3):
     box(f"keys{r_}", (dx - 0.02, dy - 0.16 + r_ * 0.035, 0.843), (0.32, 0.022, 0.004), "chrome", 0, lap)
 ball("mouse", (dx + 0.25, dy - 0.11, 0.835), (0.035, 0.05, 0.016), "monwhite", lap)
 
-# 연필꽂이
-cup = group("pencil_cup", desk)
-cyl("cup", (dx - 0.5, dy + 0.08, 0.89), 0.055, 0.13, "deskpink_lt", cup)
-for i, c in enumerate(("black", "gold", "black")):
-    cyl(f"pencil{i}", (dx - 0.52 + i * 0.02, dy + 0.08, 0.98), 0.008, 0.16, c, cup, bevel=0)
-
 # 핑크 스탠드 (둥근 받침 + 버튼 + 꺾인 팔 + 관절 + 종 모양 갓 + 전구)
 lamp = group("prop_lamp")
 LX, LY = dx + 0.5, dy + 0.1

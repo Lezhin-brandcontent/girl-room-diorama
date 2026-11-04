@@ -315,10 +315,10 @@ async function buildBooks() {
     mats.forEach(m => m.envMapIntensity = 0.4);
     (props.bookshelf ? props.bookshelf.root : scene).add(mesh);   // 책장과 함께 움직이게
     pickables.push(mesh);
-    // aim: 어떤 책을 눌러도 책장 전체가 보이는 같은 시점으로 (구석 책이 벽에 가리지 않게)
+    // 책장 정면 각도 그대로 그 책으로 다가감 (bookZoom: focusOn 에서 책 정면에 카메라를 둠)
     props[id] = { root:mesh, meshes:[{ material:front }], baseY:mesh.position.y, baseS:mesh.scale.clone() };
     BOOKINFO[id] = {
-      label: b.title, view: [0, 0.12, 1], dist: 6, aim: "prop_bookshelf", tag: "LEZHIN COMICS", title: b.title, author: b.authors.join(", "),
+      label: b.title, view: [0, 0.12, 1], bookZoom: true, tag: "LEZHIN COMICS", title: b.title, author: b.authors.join(", "),
       body: "책장에서 꺼낸 레진 작품. 버튼을 누르면 작품 페이지로 이동합니다.",
       cta: "작품 보러가기", img: `diorama/books/${b.alias}_thumb.jpg`, url: b.url,
     };
@@ -341,7 +341,7 @@ function setHover(id) {
   if (hovered) {
     const p = props[hovered];
     p.meshes.forEach(m => gsap.to(m.material.emissive, { ...(m.userData?.glow || { r:0, g:0, b:0 }), duration:.25 }));
-    gsap.to(p.root.position, { y:p.baseY, duration:.35, ease:"power2.out" });
+    gsap.to(p.root.position, { y:p.baseY, duration:.28, ease:"power2.out" });
   }
   hovered = id;
   document.body.style.cursor = id ? "pointer" : "";
@@ -349,8 +349,10 @@ function setHover(id) {
   if (id) {
     tip.textContent = infoOf(id).label;
     const p = props[id];
-    p.meshes.forEach(m => gsap.to(m.material.emissive, { r:.18, g:.12, b:.14, duration:.25 }));
-    gsap.to(p.root.position, { y:p.baseY + 0.08, duration:.35, ease:"back.out(3)" });
+    p.meshes.forEach(m => gsap.to(m.material.emissive, { r:.1, g:.07, b:.08, duration:.28 }));
+    // 튕기지 않고 살짝만 뜨게. 책은 작아서 같은 높이도 크게 보이니 더 낮게
+    const lift = id.startsWith("book:") ? 0.015 : 0.035;
+    gsap.to(p.root.position, { y:p.baseY + lift, duration:.28, ease:"power2.out" });
   }
 }
 renderer.domElement.addEventListener("pointermove", (e) => {
@@ -456,8 +458,8 @@ function activate(id) {
     hint.textContent = "빈 곳을 누르면 돌아가기";
     siteBtn.href = info.link; siteAnchor = info;
     siteBtn.textContent = info.btnText || "사이트 들어가기 →";
-    let wait = 1000;
-    if (info.book && book) { siteBtn.href = openBook(); wait = 2000; }   // 다가간 뒤 책이 펼쳐지고, 그다음 버튼
+    let wait = CAM_T * 1000;
+    if (info.book && book) { siteBtn.href = openBook(); wait = CAM_T * 1000 + 1000; }   // 다가간 뒤 책이 펼쳐지고, 그다음 버튼
     clearTimeout(siteTimer);
     siteTimer = setTimeout(() => { siteBtn.style.display = "block"; gsap.fromTo(siteBtn, { opacity:0, y:8 }, { opacity:1, y:0, duration:.35 }); }, wait);
     return;
@@ -483,6 +485,8 @@ function activate(id) {
 // ---------- 패널 + 카메라 포커스 ----------
 const panel = document.getElementById("panel");
 const hint = document.getElementById("hint"), HINT = hint.textContent;
+// 카메라 전환 시간(초). 타이머·책 펼치기 딜레이가 전부 이 값 기준이라 여기만 바꾸면 됨
+const CAM_T = 1.6;
 function focusOn(id, withPanel = true) {
   clearRestore();
   gsap.killTweensOf(camera.position); gsap.killTweensOf(controls.target);
@@ -507,11 +511,25 @@ function focusOn(id, withPanel = true) {
     dist = Math.max(sz.y / (0.8 * k), sz.x / (0.82 * k * freeW / innerHeight)) + sz.z / 2;
     shift = (panelR / 2) * (k * dist / innerHeight);   // 화면 px → 월드 거리
   }
+  if (info.bookZoom) {
+    // 책 높이가 화면의 약 55%가 되도록. 카메라는 책 바로 앞에 두고 시선만 패널 쪽으로 틀어서
+    // 책이 패널 오른쪽에 오게 함 (카메라를 옆으로 옮기면 왼쪽 미니전구가 책을 가림)
+    const p = props[id], k = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    c.copy(p.root.position).setY(p.baseY);           // 호버로 들린 높이 말고 원래 자리 기준
+    p.root.parent.localToWorld(c);
+    dist = 0.4 / (0.55 * k);
+    const panelR = withPanel && innerWidth > 700 ? panel.getBoundingClientRect().width + 20 : 0;
+    const off = new THREE.Vector3().crossVectors(dir, camera.up).normalize().multiplyScalar((panelR / 2) * (k * dist / innerHeight));
+    const pos = c.clone().add(dir.clone().multiplyScalar(dist)), tgt = c.clone().add(off);
+    gsap.to(controls.target, { x:tgt.x, y:tgt.y, z:tgt.z, duration:CAM_T, ease:"power2.inOut" });
+    gsap.to(camera.position, { x:pos.x, y:pos.y, z:pos.z, duration:CAM_T, ease:"power2.inOut" });
+    return;
+  }
   const side = new THREE.Vector3().crossVectors(dir, camera.up).normalize().multiplyScalar(shift);
   const tgt = c.clone().add(side);
-  gsap.to(controls.target, { x:tgt.x, y:tgt.y, z:tgt.z, duration:1, ease:"power3.inOut" });
+  gsap.to(controls.target, { x:tgt.x, y:tgt.y, z:tgt.z, duration:CAM_T, ease:"power2.inOut" });
   const pos = tgt.clone().add(dir.multiplyScalar(dist));
-  gsap.to(camera.position, { x:pos.x, y:pos.y, z:pos.z, duration:1, ease:"power3.inOut" });
+  gsap.to(camera.position, { x:pos.x, y:pos.y, z:pos.z, duration:CAM_T, ease:"power2.inOut" });
 }
 const AZ = [controls.minAzimuthAngle, controls.maxAzimuthAngle];
 let restoreTimers = [];   // 닫을 때 예약한 복원 작업 (다시 열면 취소)
@@ -519,10 +537,10 @@ const clearRestore = () => { restoreTimers.forEach(clearTimeout); restoreTimers 
 function goHome(toDefault = false) {
   gsap.killTweensOf(camera.position); gsap.killTweensOf(controls.target);
   const dir = (toDefault ? HOME.pos.clone().sub(HOME.target) : camera.position.clone().sub(controls.target)).normalize().multiplyScalar(HOME.pos.length());
-  if (toDefault) restoreTimers.push(setTimeout(() => { [controls.minAzimuthAngle, controls.maxAzimuthAngle] = AZ; }, 1050));   // 복귀 후 회전 제한 복원
+  if (toDefault) restoreTimers.push(setTimeout(() => { [controls.minAzimuthAngle, controls.maxAzimuthAngle] = AZ; }, CAM_T * 1000 + 50));   // 복귀 후 회전 제한 복원
   const pos = HOME.target.clone().add(dir);
-  gsap.to(controls.target, { ...HOME.target, duration:1, ease:"power3.inOut" });
-  gsap.to(camera.position, { x:pos.x, y:pos.y, z:pos.z, duration:1, ease:"power3.inOut" });
+  gsap.to(controls.target, { ...HOME.target, duration:CAM_T, ease:"power2.inOut" });
+  gsap.to(camera.position, { x:pos.x, y:pos.y, z:pos.z, duration:CAM_T, ease:"power2.inOut" });
 }
 function openPanel(id) {
   const s = infoOf(id);
@@ -538,7 +556,7 @@ function openPanel(id) {
   if (s.videos) {
     renderVideos();
     controls.enableRotate = false;            // 영상 보는 동안 시점 고정 (플레이어가 화면에 맞게 겹쳐 있도록)
-    setTimeout(() => { if (focused === id) playVideo(0); }, 1050);
+    setTimeout(() => { if (focused === id) playVideo(0); }, CAM_T * 1000 + 50);
   }
   if (!focused) history.pushState({ panel:id }, "");
   focused = id;
@@ -558,7 +576,7 @@ function closePanel(fromHistory) {
   hint.style.opacity = "";
   gsap.to(panel, { x:"-115%", duration:.45, ease:"power2.in" });
   goHome(wasView);
-  restoreTimers.push(setTimeout(() => { controls.minDistance = 12; }, 1000));
+  restoreTimers.push(setTimeout(() => { controls.minDistance = 12; }, CAM_T * 1000));
   if (!fromHistory) history.back();
 }
 document.getElementById("back").onclick = () => closePanel(false);
@@ -675,7 +693,7 @@ function openBook() {
   book.open = true;
   gsap.killTweensOf(book.pivot.rotation);
   book.bandEnds.forEach(o => o.visible = false);
-  gsap.to(book.pivot.rotation, { x: book.sgn * (Math.PI + 0.26), duration:.9, delay:.95, ease:"power2.inOut" });
+  gsap.to(book.pivot.rotation, { x: book.sgn * (Math.PI + 0.26), duration:.9, delay:CAM_T - 0.05, ease:"power2.inOut" });
   return n.url;
 }
 function closeBook() {
