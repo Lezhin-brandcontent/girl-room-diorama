@@ -36,6 +36,10 @@
     border:1px solid rgba(255,255,255,.7); box-shadow:0 8px 24px rgba(120,80,120,.18); color:#2f2335; font-weight:700; font-size:15px;
     letter-spacing:.02em; text-decoration:none; white-space:nowrap; }
   #siteBtn:hover { background:rgba(255,255,255,.7); }
+  .phNav { position:fixed; z-index:20; display:none; width:40px; height:40px; margin:-20px 0 0 -20px; border-radius:50%; cursor:pointer;
+    border:1px solid rgba(255,255,255,.7); background:rgba(255,248,250,.42); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    color:#2f2335; font-size:22px; line-height:36px; text-align:center; user-select:none; box-shadow:0 8px 24px rgba(120,80,120,.18); }
+  .phNav:hover { background:rgba(255,255,255,.7); }
   #panel.glass #back { background:rgba(255,255,255,.55); margin-bottom:16px; }
   .vitem span { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   #vlist { display:none; flex-direction:column; gap:14px; margin-top:6px; }
@@ -63,6 +67,7 @@
 <div id="loading">LOADING <span id="pct">0</span>%</div>
 <div id="tip"></div>
 <a id="siteBtn" target="_blank" rel="noopener">사이트 들어가기 →</a>
+<div class="phNav" id="phPrev">‹</div><div class="phNav" id="phNext">›</div>
 <div id="hint">드래그로 돌려보기 · 소품을 눌러보세요</div>
 <aside id="panel" class="glass">
   <button id="back">← BACK</button>
@@ -89,6 +94,8 @@ const INFO = {
   bookshelf: { label:"BOOKS",   zoom:true, view:[0, 0.12, 1], dist:8 },     // 패널 없이 책장으로 다가가기만 (책을 눌러 작품 보기)
   window:    { get label() { return isNight ? "DAY" : "NIGHT"; }, toggle:"night" },   // 창문: 눌러서 낮↔밤 (밤이면 스탠드·미니전구 자동 켜짐)
   frame:     { label:"POSTER",  view:[0, 0.05, 1], dist:6.5, img:"diorama/frame.jpg", tag:"NOTICE",    title:"공지",       body:"액자 — 최신 공지/키비주얼을 거는 자리.",         cta:"공지 보기" },
+  phone:     { label:"PHONE",   view:[0, 1, 0.38], aim:"phone_screen", dist:0.82, btnAt:"phone_body", phone:true,
+               link:"https://www.lezhin.com/ko", btnText:"이벤트 보러가기 →" },   // 위에서 내려다보며 다가감 → 화면에 레진 이벤트 팝업
   lamp:      { label:"LAMP",    toggle:true },
   fairy:     { label:"LIGHTS",  toggle:"fairy" },   // 벽 미니전구: 눌러서 켜고 끄기   // 패널 없이 불 켜고 끄기
 };
@@ -208,6 +215,7 @@ new GLTFLoader().load("diorama/girl_room.glb?v=" + Date.now(), (gltf) => {
     lampLight.position.copy(halo.position).add(new THREE.Vector3(-0.2, -0.2, 0.45));
   }   // 노드 원점이 아니라 실제 전구 위치
   setupNightSky();
+  setupPhone();
   setLamp(false, true);   // 시작은 불 끈 낮 (창문을 눌러 밤으로)
   setupFairy();
   gsap.to("#loading", { opacity:0, duration:.5, onComplete:() => document.getElementById("loading").remove() });
@@ -499,6 +507,7 @@ function activate(id) {
     hint.textContent = "빈 곳을 누르면 돌아가기";
     siteBtn.href = info.link; siteAnchor = info;
     siteBtn.textContent = info.btnText || "사이트 들어가기 →";
+    if (info.phone) phoneOpen();
     let wait = CAM_T * 1000;
     if (info.book && book) { siteBtn.href = openBook(); wait = CAM_T * 1000 + 1000; }   // 다가간 뒤 책이 펼쳐지고, 그다음 버튼
     clearTimeout(siteTimer);
@@ -532,7 +541,7 @@ const CAM_T = 1.6;
 function focusOn(id, withPanel = true) {
   clearRestore();
   gsap.killTweensOf(camera.position); gsap.killTweensOf(controls.target);
-  controls.minDistance = 1;
+  controls.minDistance = 0.5;   // 휴대폰처럼 작은 물건은 1보다 가까이 가야 함
   const info = infoOf(id) || {};
   const fillObj = info.fill && scene.getObjectByName(info.fill);
   const aimObj = info.aim && scene.getObjectByName(info.aim);
@@ -610,6 +619,7 @@ function closePanel(fromHistory) {
   if (!focused) return;
   clearTimeout(siteTimer); siteBtn.style.display = "none";
   if (book && book.open) closeBook();
+  if (focused === "phone") phoneClose();
   const wasView = !!(infoOf(focused) || {}).view;
   focused = null;
   stopVideo();
@@ -758,12 +768,157 @@ function placeSiteBtn() {
     return;
   }
   const m = siteAnchor && scene.getObjectByName(siteAnchor.btnAt); if (!m) return;
+  if (siteAnchor.phone) {   // 비스듬히 놓인 휴대폰: 휴대폰 자체 모양의 화면상 아래 끝 가운데 밑에
+    m.geometry.computeBoundingBox(); const gb = m.geometry.boundingBox;
+    let x0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (let k = 0; k < 8; k++) {
+      _v.set(k & 1 ? gb.max.x : gb.min.x, k & 2 ? gb.max.y : gb.min.y, k & 4 ? gb.max.z : gb.min.z);
+      m.localToWorld(_v).project(camera);
+      x0 = Math.min(x0, _v.x); x1 = Math.max(x1, _v.x); y1 = Math.max(y1, (1 - _v.y) / 2 * innerHeight);
+    }
+    siteBtn.style.left = ((x0 + x1) / 2 + 1) / 2 * innerWidth + "px";
+    siteBtn.style.top = y1 + 18 + "px";
+    return;
+  }
   const bb = new THREE.Box3().setFromObject(m);
   // btnMid: 납작한 물건(책)은 중심 아래쪽 화면 좌표에, 아니면 물체 밑변 가운데 아래에 버튼을 둠
   if (siteAnchor.btnMid) bb.getCenter(_v); else _v.set((bb.min.x + bb.max.x) / 2, bb.min.y, bb.max.z);
   _v.project(camera);
   siteBtn.style.left = (_v.x + 1) / 2 * innerWidth + "px";
   siteBtn.style.top = (1 - _v.y) / 2 * innerHeight + (siteAnchor.btnMid ? 70 : 18) + "px";
+}
+// ---------- 침대 위 휴대폰: 레진 메인 이벤트 팝업 ----------
+// 레진 사이트가 메인 팝업을 받아오는 배너 API를 그대로 씀 (CORS 허용). 사이트 내부용이라 바뀌면 대체 화면으로
+const PHONE_API = "https://www.lezhin.com/lz-api/v2/banners?position=app_front&adult=false&store=web";
+const PH_W = 420, PH_H = 920, PH_R = 52;   // 화면 비율(유리 안쪽 0.0706 x 0.1546)에 맞춘 캔버스, 화면 모서리 반지름(px)
+const PH_FONT = "Pretendard, 'Malgun Gothic', sans-serif";
+const phone = { banners:[], i:0, plane:null, lock:null, pop:null };
+const hhmm = () => { const d = new Date(); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`; };
+// 아이폰 목업 틀: 둥근 화면 모서리(바깥은 투명 = 검은 유리가 테두리로 보임) + 위쪽 알약 카메라 + 상태줄
+function phFrame(g, paint) {
+  g.clearRect(0, 0, PH_W, PH_H);
+  g.save(); g.beginPath(); g.roundRect(0, 0, PH_W, PH_H, PH_R); g.clip();
+  paint();
+  g.fillStyle = "#000"; g.beginPath(); g.roundRect(PH_W / 2 - 62, 20, 124, 36, 18); g.fill();
+  g.fillStyle = "#fff"; g.font = `600 24px ${PH_FONT}`; g.textBaseline = "middle"; g.textAlign = "center";
+  g.fillText(hhmm(), 82, 39);
+  for (let k = 0; k < 4; k++) g.fillRect(300 + k * 8, 46 - (k + 1) * 4, 5, (k + 1) * 4);   // 신호 막대
+  g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.roundRect(344, 30, 38, 18, 5); g.stroke();
+  g.fillRect(347, 33, 26, 12); g.fillRect(384, 35, 3, 8);                                     // 배터리
+  g.restore();
+}
+function drawLock() {   // 잠금화면 + 알림 카드 (가끔 켜질 때)
+  const g = phone.lock.image.getContext("2d");
+  phFrame(g, () => {
+    const gr = g.createLinearGradient(0, 0, 0, PH_H); gr.addColorStop(0, "#ffb3cf"); gr.addColorStop(1, "#b9a6f0");
+    g.fillStyle = gr; g.fillRect(0, 0, PH_W, PH_H);
+    const d = new Date();
+    g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = `500 26px ${PH_FONT}`; g.fillText(`${d.getMonth() + 1}월 ${d.getDate()}일 ${"일월화수목금토"[d.getDay()]}요일`, PH_W / 2, 130);
+    g.font = `700 118px ${PH_FONT}`; g.fillText(hhmm(), PH_W / 2, 220);
+    g.fillStyle = "rgba(255,255,255,.82)"; g.beginPath(); g.roundRect(24, 560, PH_W - 48, 120, 30); g.fill();
+    g.fillStyle = "#ff3b6b"; g.beginPath(); g.roundRect(46, 592, 56, 56, 14); g.fill();
+    g.fillStyle = "#fff"; g.font = `800 30px ${PH_FONT}`; g.fillText("L", 74, 621);
+    g.textAlign = "left"; g.fillStyle = "#2f2335"; g.font = `700 26px ${PH_FONT}`; g.fillText("레진코믹스", 120, 602);
+    g.fillStyle = "#5a4d63"; g.font = `500 24px ${PH_FONT}`; g.fillText("새 이벤트가 도착했어요", 120, 640);
+  });
+  phone.lock.needsUpdate = true;
+}
+function drawPopup() {   // 앱 화면: 팝업 이미지를 가로에 맞춰 가운데 + 여러 장이면 점 표시
+  const g = phone.pop.image.getContext("2d"), b = phone.banners[phone.i];
+  phFrame(g, () => {
+    g.fillStyle = "#16121c"; g.fillRect(0, 0, PH_W, PH_H);
+    if (b && b.img) {
+      const w = PH_W - 28, h = w * b.img.height / b.img.width;
+      g.drawImage(b.img, 14, (PH_H - h) / 2 + 12, w, h);
+    } else {   // 대체 화면: API 실패 / 이미지 못 불러옴
+      g.fillStyle = "#ff3b6b"; g.beginPath(); g.roundRect(PH_W / 2 - 60, 320, 120, 120, 30); g.fill();
+      g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.font = `800 64px ${PH_FONT}`; g.fillText("L", PH_W / 2, 382);
+      g.font = `700 32px ${PH_FONT}`; g.fillText("레진코믹스", PH_W / 2, 500);
+      g.fillStyle = "rgba(255,255,255,.7)"; g.font = `500 24px ${PH_FONT}`; g.fillText("지금 진행 중인 작품 보러가기", PH_W / 2, 544);
+    }
+    const n = phone.banners.length;
+    for (let k = 0; n > 1 && k < n; k++) {
+      g.fillStyle = k === phone.i ? "#fff" : "rgba(255,255,255,.35)";
+      g.beginPath(); g.arc(PH_W / 2 + (k - (n - 1) / 2) * 22, PH_H - 50, 6, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = "rgba(255,255,255,.85)"; g.beginPath(); g.roundRect(PH_W / 2 - 70, PH_H - 22, 140, 8, 4); g.fill();   // 홈 바
+  });
+  phone.pop.needsUpdate = true;
+}
+async function loadBanners() {
+  try {
+    const j = await (await fetch(PHONE_API)).json();
+    const list = (j.data || []).filter(b => b.imageUrl && b.targetUrl);
+    phone.banners = await Promise.all(list.map(b => new Promise((res) => {
+      const img = new Image(); img.crossOrigin = "anonymous";   // 캔버스에 그리려면 필요 (이미지 서버도 CORS 허용)
+      img.onload = () => res({ url:b.targetUrl, img }); img.onerror = () => res({ url:b.targetUrl, img:null });
+      const u = new URL(b.imageUrl); u.pathname += ".webp"; u.searchParams.set("width", "640");   // 사이트와 같은 640px webp
+      img.src = u.href;
+    })));
+  } catch { phone.banners = []; }
+}
+function setupPhone() {
+  const scr = scene.getObjectByName("phone_screen");
+  if (!scr || !props.phone) return;
+  scr.geometry.computeBoundingBox(); const bb = scr.geometry.boundingBox, sz = bb.getSize(new THREE.Vector3());
+  const tex = () => {
+    const c = document.createElement("canvas"); c.width = PH_W; c.height = PH_H;
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+  };
+  phone.lock = tex(); phone.pop = tex();
+  phone.plane = new THREE.Mesh(new THREE.PlaneGeometry(sz.x - 0.0044, sz.z - 0.0044),   // 유리보다 살짝 작게 → 얇은 검은 테두리
+    new THREE.MeshBasicMaterial({ map:phone.lock, transparent:true, opacity:0, toneMapped:false }));
+  phone.plane.rotation.x = -Math.PI / 2;   // 텍스처 위쪽 = 휴대폰 위쪽(뒷벽 방향)
+  bb.getCenter(phone.plane.position); phone.plane.position.y = bb.max.y + 0.0006;
+  phone.plane.userData.prop = "phone";
+  scr.add(phone.plane);
+  // 휴대폰이 비스듬히 놓여 있어서, 휴대폰 위쪽이 화면 위로 오도록 그 반대편 위에서 내려다봄
+  // (Blender 의 +y = glTF 노드의 -z)
+  const top = new THREE.Vector3(0, 0, -1).transformDirection(props.phone.root.matrixWorld).setY(0).normalize();
+  INFO.phone.view = [-top.x * 0.38, 1, -top.z * 0.38];
+  loadBanners();
+  // 몇 초마다 화면이 잠깐 켜지며 진동 = "알림 왔다"
+  setInterval(() => {
+    if (focused === "phone" || document.hidden) return;
+    drawLock(); phone.plane.material.map = phone.lock;
+    const r = props.phone.root, z0 = r.rotation.z;
+    gsap.timeline()
+      .to(phone.plane.material, { opacity:1, duration:.25 })
+      .fromTo(r.rotation, { z:z0 - .05 }, { z:z0 + .05, duration:.05, repeat:7, yoyo:true, ease:"none", onComplete:() => { r.rotation.z = z0; } }, "<")
+      .to(phone.plane.material, { opacity:0, duration:.6 }, "+=2");
+  }, 7000);
+}
+function phoneShow() {
+  drawPopup(); phone.plane.material.map = phone.pop;
+  const b = phone.banners[phone.i];
+  siteBtn.href = b ? b.url : INFO.phone.link;
+}
+function phoneOpen() {
+  if (!phone.plane) return;
+  phone.i = 0; phoneShow();
+  gsap.killTweensOf(phone.plane.material);
+  gsap.to(phone.plane.material, { opacity:1, duration:.4, delay:CAM_T * .6 });
+}
+function phoneClose() {
+  if (!phone.plane) return;
+  gsap.killTweensOf(phone.plane.material);
+  gsap.to(phone.plane.material, { opacity:0, duration:.4 });
+  phPrev.style.display = phNext.style.display = "none";
+}
+const phPrev = document.getElementById("phPrev"), phNext = document.getElementById("phNext");
+const phStep = (d) => { const n = phone.banners.length; phone.i = (phone.i + d + n) % n; phoneShow(); };
+phPrev.onclick = () => phStep(-1); phNext.onclick = () => phStep(1);
+function placePhoneNav() {   // 화살표: 팝업이 2개 이상일 때만, 휴대폰 화면 좌우 바깥에 맞춤
+  const on = focused === "phone" && siteBtn.style.display === "block" && phone.banners.length > 1;
+  phPrev.style.display = phNext.style.display = on ? "block" : "none";
+  if (!on) return;
+  const bb = new THREE.Box3().setFromObject(phone.plane), c = bb.getCenter(new THREE.Vector3());
+  const L = new THREE.Vector3(bb.min.x, c.y, c.z).project(camera), R = new THREE.Vector3(bb.max.x, c.y, c.z).project(camera);
+  const y = (1 - L.y) / 2 * innerHeight;
+  phPrev.style.left = (L.x + 1) / 2 * innerWidth - 40 + "px"; phPrev.style.top = y + "px";
+  phNext.style.left = (R.x + 1) / 2 * innerWidth + 40 + "px"; phNext.style.top = y + "px";
 }
 // TV 화면(3D)의 앞면 네 귀퉁이를 화면 좌표로 투영해 플레이어 위치·크기를 매 프레임 맞춤
 const _v = new THREE.Vector3();
@@ -781,7 +936,7 @@ function placePlayer() {
   Object.assign(ytWrap.style, { left:x0 + inset + "px", top:y0 + inset + "px", width:x1 - x0 - inset * 2 + "px", height:y1 - y0 - inset * 2 + "px" });
 }
 
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); placePlayer(); placeSiteBtn(); });
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); placePlayer(); placeSiteBtn(); placePhoneNav(); });
 </script>
 </body>
 </html>

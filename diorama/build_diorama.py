@@ -280,6 +280,55 @@ SX0 = HX + 0.5                   # 이불 시작(베개 앞)
 DX1 = FX + 0.07
 soft("duvet", ((SX0 + DX1) / 2, by, 0.39), (DX1 - SX0, HALF * 2 + 0.16, 0.42), "spread", puff=(0, 0, 0.22), sag=0.5, wrinkle=0.04, cuts=3)
 
+# ---------- 이불 위 휴대폰 (클릭: 레진 이벤트 팝업) ----------
+# 아이폰 목업 느낌: 모서리가 크게 둥근 판 + 얇은 검은 테두리. 화면 내용(카메라 구멍·시계)은 웹 캔버스에서 그림
+PAL["phone_frame"] = "#F3D3DC"; PAL["phone_btn"] = "#E6BCC9"
+
+
+def rrect_slab(name, loc, w, l, t, r, color, parent, edge=0.0015, rough=0.35, seg=10):
+    """평면도에서 모서리 반지름 r 인 둥근 직사각형을 두께 t 로 세운 판. 위·아래 모서리는 edge 만큼 살짝 굴림."""
+    pts = []
+    for cx, cy, a0 in ((w / 2 - r, l / 2 - r, 0), (-w / 2 + r, l / 2 - r, 90), (-w / 2 + r, -l / 2 + r, 180), (w / 2 - r, -l / 2 + r, 270)):
+        for k in range(seg + 1):
+            a = math.radians(a0 + 90 * k / seg)
+            pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    bm = bmesh.new()
+    bot = [bm.verts.new((x, y, -t / 2)) for x, y in pts]
+    top = [bm.verts.new((x, y, t / 2)) for x, y in pts]
+    bm.faces.new(bot[::-1]); bm.faces.new(top)
+    n = len(pts)
+    for i in range(n):
+        j = (i + 1) % n
+        bm.faces.new((bot[i], bot[j], top[j], top[i]))
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new(name, me); scene.collection.objects.link(ob)
+    ob.location = loc
+    if edge:
+        md = ob.modifiers.new("bevel", "BEVEL"); md.width = edge; md.segments = 3
+        md.limit_method = "ANGLE"; md.angle_limit = math.radians(60)   # 둥근 옆면 사이 작은 꺾임은 건드리지 않음
+        ob.modifiers.new("wn", "WEIGHTED_NORMAL")
+    return _finish(ob, color, parent, rough)
+
+
+# 침대 가운데에 비스듬히. 이불이 울퉁불퉁해서 휴대폰 네 귀퉁이+가운데 높이를 재고 가장 높은 곳에 올림 (파묻힘 방지)
+PHX, PHY, PHR = -1.02, by + 0.02, 0.62
+PW, PL, PT = 0.078, 0.162, 0.008
+bpy.context.view_layer.update()
+_dg = bpy.context.evaluated_depsgraph_get()
+_zs = []
+for sx, sy in ((0, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+    lx, ly = sx * PW / 2, sy * PL / 2
+    wx = PHX + lx * math.cos(PHR) - ly * math.sin(PHR); wy = PHY + lx * math.sin(PHR) + ly * math.cos(PHR)
+    _hit, _loc, *_ = bpy.context.scene.ray_cast(_dg, (wx, wy, 3.0), (0, 0, -1))
+    if _hit: _zs.append(_loc.z)
+phz = (max(_zs) if _zs else 0.62) + 0.001
+ph = group("prop_phone")
+ph.location = (PHX, PHY, phz); ph.rotation_euler = (0, 0, PHR)   # 웹은 이 회전을 읽어 화면이 똑바로 보이는 방향에서 다가감
+rrect_slab("phone_body", (0, 0, PT / 2), PW, PL, PT, 0.0125, "phone_frame", ph, edge=0.0018, rough=0.3)
+rrect_slab("phone_screen", (0, 0, PT + 0.0004), PW - 0.003, PL - 0.003, 0.0008, 0.011, "black", ph, edge=0, rough=0.1)
+for nm, x, y, ln in (("phone_btn_p", PW / 2 + 0.0006, 0.025, 0.026), ("phone_btn_v1", -PW / 2 - 0.0006, 0.035, 0.014), ("phone_btn_v2", -PW / 2 - 0.0006, 0.015, 0.014)):
+    box(nm, (x, y, PT / 2), (0.0022, ln, 0.0032), "phone_btn", 0.0009, ph, rough=0.3)
+
 # ---------- 협탁 + 일기장 ----------
 ns = group("nightstand")
 cyl("ns_top", (-1.7, -1.72, 0.42), 0.28, 0.32, "lilac", ns, bevel=0.05)
