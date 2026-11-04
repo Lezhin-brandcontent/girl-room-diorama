@@ -1,0 +1,23 @@
+# 화이트리스트 방식: 이 폴더(test_scene)에는 다른 실험 파일이 많아서, 디오라마 프로젝트 파일만 추적한다.
+/*
+!/.gitignore
+!/README.md
+!/tools/
+!/references/
+
+# Blender 원본 (스크립트 + .blend)
+!/diorama/
+/diorama/*
+!/diorama/build_diorama.py
+!/diorama/girl_room.blend
+
+# 웹 뷰어
+!/web/
+/web/*
+!/web/diorama.html
+!/web/diorama/
+/web/diorama/preview.png
+/web/diorama/rug.jpg
+
+__pycache__/
+*.pyc

@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Girl's Room Diorama</title>
+<style>
+  :root { --ink:#3b2f4a; --paper:#fffaf6; --accent:#ff7fa8; --bg1:#f3e9f2; --bg2:#d9d3e6; }
+  html,body { margin:0; height:100%; overflow:hidden; font-family:"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+              background:radial-gradient(ellipse at 50% 40%, var(--bg1), var(--bg2)); color:var(--ink); }
+  canvas { display:block; touch-action:none; position:relative; z-index:1; }
+  #night { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0;
+           background:radial-gradient(ellipse at 50% 40%, #4a3f63, #231d33); }
+  #hint { z-index:12; position:fixed; left:50%; bottom:22px; transform:translateX(-50%); font-size:13px; letter-spacing:.06em;
+          background:rgba(255,255,255,.7); padding:8px 16px; border-radius:99px; pointer-events:none; }
+  #tip { z-index:25; position:fixed; pointer-events:none; background:var(--ink); color:#fff; font-size:12px; font-weight:700;
+         letter-spacing:.08em; padding:5px 11px; border-radius:99px; transform:translate(14px,14px); opacity:0; transition:opacity .15s; }
+  #loading { position:fixed; inset:0; display:grid; place-items:center; background:var(--bg1); z-index:30; font-weight:800; letter-spacing:.2em; }
+  #panel { position:fixed; z-index:20; left:20px; top:20px; bottom:20px; width:min(360px,calc(100% - 40px)); box-sizing:border-box;
+           background:var(--paper); border-radius:24px; padding:28px; box-shadow:0 20px 60px rgba(80,50,90,.25); transform:translateX(-115%); }
+  #panel .tag { color:var(--accent); font-weight:800; font-size:12px; letter-spacing:.14em; }
+  #panel h2 { margin:6px 0 10px; font-size:26px; }
+  #panel p { line-height:1.65; }
+  #panel button { border:0; border-radius:14px; cursor:pointer; font:inherit; }
+  #back { background:#f1e6ee; color:var(--ink); padding:7px 14px; font-size:12px!important; font-weight:700; letter-spacing:.1em; margin-bottom:22px; }
+  #pImg { display:none; width:100%; border-radius:16px; margin:0 0 16px; box-shadow:0 8px 24px rgba(80,50,90,.18); }
+  #pAuthor { font-size:13px; opacity:.6; margin:-4px 0 8px; }
+  #pCta { background:var(--accent); color:#fff; padding:13px 20px; font-weight:700; }
+  #panel { overflow-y:auto; }
+  /* 영상 목록 모드: 반투명 유리 패널, 제목/설명 숨김 */
+  #panel.glass { background:rgba(255,248,250,.32); backdrop-filter:blur(18px) saturate(1.15); -webkit-backdrop-filter:blur(18px) saturate(1.15);
+                 box-shadow:0 10px 40px rgba(80,50,90,.12); border:1px solid rgba(255,255,255,.45); }
+  #panel.vmode #pTag, #panel.vmode #pTitle, #panel.vmode #pBody, #panel.vmode #pAuthor { display:none; }
+  #siteBtn { position:fixed; z-index:20; display:none; transform:translate(-50%,0); padding:12px 26px; border-radius:999px;
+    background:rgba(255,248,250,.42); backdrop-filter:blur(16px) saturate(1.15); -webkit-backdrop-filter:blur(16px) saturate(1.15);
+    border:1px solid rgba(255,255,255,.7); box-shadow:0 8px 24px rgba(120,80,120,.18); color:#2f2335; font-weight:700; font-size:15px;
+    letter-spacing:.02em; text-decoration:none; white-space:nowrap; }
+  #siteBtn:hover { background:rgba(255,255,255,.7); }
+  #panel.glass #back { background:rgba(255,255,255,.55); margin-bottom:16px; }
+  .vitem span { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  #vlist { display:none; flex-direction:column; gap:14px; margin-top:6px; }
+  .vitem { display:block; width:100%; text-align:left; background:none!important; padding:0!important; border-radius:14px!important; }
+  .vitem img { width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:14px; display:block;
+               outline:3px solid transparent; outline-offset:2px; transition:outline-color .2s, transform .2s; }
+  .vitem:hover img { transform:translateY(-2px); }
+  .vitem.on img { outline-color:var(--accent); }
+  .vitem span { display:block; margin-top:7px; font-size:13px; font-weight:700; line-height:1.4; color:var(--ink); }
+  /* TV 화면 위에 겹치는 유튜브 플레이어 */
+  #ytWrap { position:fixed; z-index:15; display:none; overflow:hidden; border-radius:14px; background:#111; }
+  #ytWrap iframe { width:100%; height:100%; border:0; display:block; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+</head>
+<body>
+<div id="night"></div>
+<div id="ytWrap"><iframe id="yt" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="video"></iframe></div>
+<div id="loading">LOADING <span id="pct">0</span>%</div>
+<div id="tip"></div>
+<a id="siteBtn" target="_blank" rel="noopener">사이트 들어가기 →</a>
+<div id="hint">드래그로 돌려보기 · 소품을 눌러보세요</div>
+<aside id="panel" class="glass">
+  <button id="back">← BACK</button>
+  <img id="pImg" alt="">
+  <div class="tag" id="pTag"></div>
+  <h2 id="pTitle"></h2>
+  <div id="pAuthor"></div>
+  <p id="pBody"></p>
+  <button id="pCta"></button>
+  <div id="vlist"></div>
+</aside>
+
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+// 클릭 소품: Blender에서 'prop_<id>' 이름의 그룹
+const INFO = {
+  laptop:    { label:"COMPUTER", view:[0, 0.06, 1], aim:"mon_body", dist:3.6, btnAt:"mon_base", link:"https://www.lezhin.com/ko" },   // 정면으로 다가간 뒤 '사이트 들어가기' 버튼
+  tv:        { label:"TV",      view:[0, 0.05, 1], fill:"tv_body", videos:true, tag:"VIDEO", title:"영상", body:"보고 싶은 영상을 골라 보세요." },
+  diary:     { label:"NOVEL",   book:true, dist:2.0, btnText:"작품 보러가기 →", link:"https://www.bomtoon.com/bom/novel/main" },   // 책으로 다가가 펼침 → 봄툰 소설 한 편 + 작품 보러가기
+  bookshelf: { label:"BOOKS",   zoom:true, view:[0, 0.12, 1], dist:8 },     // 패널 없이 책장으로 다가가기만 (책을 눌러 작품 보기)
+  window:    { label:"WINDOW",  tag:"EVENT",     title:"이벤트",     body:"창밖 — 오픈 이벤트·알림 신청 자리.",            cta:"알림 신청" },
+  frame:     { label:"POSTER",  view:[0, 0.05, 1], dist:6.5, img:"diorama/frame.jpg", tag:"NOTICE",    title:"공지",       body:"액자 — 최신 공지/키비주얼을 거는 자리.",         cta:"공지 보기" },
+  lamp:      { label:"LAMP",    toggle:true },
+  fairy:     { label:"LIGHTS",  toggle:"fairy" },   // 벽 미니전구: 눌러서 켜고 끄기   // 패널 없이 불 켜고 끄기
+};
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 0.95;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+const sun = new THREE.DirectionalLight(0xfff3ea, 1.3);
+sun.position.set(4, 8, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left:-4, right:4, top:4, bottom:-4, near:1, far:20 });
+sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.02; sun.shadow.radius = 4;
+const hemi = new THREE.HemisphereLight(0xffffff, 0xf3d9c8, 0.35);
+scene.add(sun, hemi);
+const lampLight = new THREE.PointLight(0xffc977, 0, 1.6, 2);
+scene.add(lampLight);
+// 전구 주변 빛 번짐(halo): 방사형 그라데이션 스프라이트
+const haloTex = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const g = c.getContext("2d"), r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, "rgba(255,236,170,1)"); r.addColorStop(.25, "rgba(255,210,120,.55)"); r.addColorStop(1, "rgba(255,190,100,0)");
+  g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map:haloTex, blending:THREE.AdditiveBlending, depthWrite:false, transparent:true, opacity:0 }));
+halo.scale.set(0.2, 0.2, 1);
+scene.add(halo);
+
+// 카메라: Blender (9,-9,8.2) → three (9, 8.2, 9). 좁은 화각으로 아이소메트릭 느낌
+const camera = new THREE.PerspectiveCamera(18, innerWidth / innerHeight, 0.1, 100);
+const HOME = { pos:new THREE.Vector3(14, 12.6, 14), target:new THREE.Vector3(0, 0.9, 0) };
+camera.position.copy(HOME.pos);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(HOME.target);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.enablePan = false;
+controls.minAzimuthAngle = THREE.MathUtils.degToRad(15);   // 벽 뒷면이 안 보이게 회전 제한
+controls.maxAzimuthAngle = THREE.MathUtils.degToRad(75);
+controls.minPolarAngle = THREE.MathUtils.degToRad(35);
+controls.maxPolarAngle = THREE.MathUtils.degToRad(72);
+controls.minDistance = 12; controls.maxDistance = 30;
+
+function fit() {
+  // 세로 화면이면 멀리서 보기
+  const k = Math.max(1, 1.1 / (innerWidth / innerHeight));
+  HOME.pos.setLength(23 * k);
+  controls.maxDistance = 30 * k;
+}
+fit();
+camera.position.copy(HOME.pos);
+
+const props = {};                 // id -> { root, meshes, base }
+const pickables = [];
+new GLTFLoader().load("diorama/girl_room.glb?v=" + Date.now(), (gltf) => {
+  const root = gltf.scene;
+  root.traverse((o) => {
+    if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.material.envMapIntensity = 0.4; }  // r160은 scene.environmentIntensity 미지원
+    if (o.name.startsWith("prop_")) {
+      const id = o.name.slice(5);
+      if (!INFO[id]) return;
+      const meshes = [];
+      o.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.userData.prop = id; meshes.push(m); pickables.push(m); } });
+      props[id] = { root:o, meshes, baseY:o.position.y, baseS:o.scale.clone() };
+    }
+  });
+  scene.add(root);
+  root.updateMatrixWorld(true);
+  applyWallpaper();
+  // 모니터 화면은 조명 영향을 받지 않는 재질 → 스탠드 빛 반사가 비치지 않음
+  const mon = scene.getObjectByName("mon_screen");
+  if (mon) {   // 화면 앞면에 레진 이미지 (조명 영향 없음 = 화면이 스스로 빛나는 느낌)
+    const mt = new THREE.TextureLoader().load("diorama/monitor.png");
+    mt.colorSpace = THREE.SRGBColorSpace; mt.anisotropy = 8;
+    const g = mon.geometry, pos = g.attributes.position, uv = new Float32Array(pos.count * 2), v = new THREE.Vector3();
+    g.computeBoundingBox(); const bb = g.boundingBox;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      uv[i * 2] = (v.x - bb.min.x) / (bb.max.x - bb.min.x);
+      uv[i * 2 + 1] = (v.y - bb.min.y) / (bb.max.y - bb.min.y);
+    }
+    g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    mon.material = new THREE.MeshBasicMaterial({ map:mt });
+    mon.userData.prop = "laptop";
+    const lp = props.laptop; if (lp) lp.meshes = lp.meshes.filter(m => m !== mon);   // 호버 하이라이트(emissive)는 화면 제외
+  }
+  buildBooks();
+  setupBook();
+  // 스툴 위 책 표지: 봄툰 이미지 (위 표지 윗면에 얇은 판으로 덧붙임)
+  const cov = scene.getObjectByName("diary_cover_t");
+  if (cov) {
+    const ct = new THREE.TextureLoader().load("diorama/bomtoon_cover.png");
+    ct.colorSpace = THREE.SRGBColorSpace; ct.anisotropy = 8;
+    cov.geometry.computeBoundingBox(); const bb = cov.geometry.boundingBox, sz = bb.getSize(new THREE.Vector3());
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(sz.x * 0.96, sz.z * 0.94),
+      new THREE.MeshStandardMaterial({ map:ct, roughness:.5, envMapIntensity:.4 }));
+    pl.rotation.x = -Math.PI / 2;
+    bb.getCenter(pl.position); pl.position.y = bb.max.y + 0.0006;
+    pl.userData.prop = "diary"; pl.name = "diary_cover_img";
+    cov.add(pl);
+  }
+  const lamp = scene.getObjectByName("lamp_bulb");
+  if (lamp) {
+    new THREE.Box3().setFromObject(lamp).getCenter(halo.position);
+    // 실제 광원은 전구보다 벽에서 떨어진 책상 앞쪽·아래에 둬서 벽에 하얀 얼룩이 생기지 않게
+    lampLight.position.copy(halo.position).add(new THREE.Vector3(-0.2, -0.2, 0.45));
+  }   // 노드 원점이 아니라 실제 전구 위치
+  setLamp(true, true);   // 시작은 불 켜진 상태
+  setupFairy();
+  gsap.to("#loading", { opacity:0, duration:.5, onComplete:() => document.getElementById("loading").remove() });
+  // 입장 연출: 살짝 돌면서 등장
+  camera.position.applyAxisAngle(new THREE.Vector3(0,1,0), -0.5);
+  gsap.to({ a:-0.5 }, { a:0, duration:1.8, ease:"power3.out", onUpdate() {
+    const p = HOME.pos.clone().applyAxisAngle(new THREE.Vector3(0,1,0), this.targets()[0].a);
+    camera.position.copy(p);
+  }});
+}, (e) => { if (e.total) document.getElementById("pct").textContent = Math.round(e.loaded / e.total * 100); });
+
+
+
+// ---------- 벽지: 벽 메시에 평면 투영 UV를 만들어 패턴을 반복 ----------
+function applyWallpaper() {
+  const tex = new THREE.TextureLoader().load("diorama/wallpaper.jpg");
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.MirroredRepeatWrapping;   // 원본이 이음매 없는 타일이 아니라 좌우 반전 반복으로 경계를 숨김
+  tex.wrapT = THREE.MirroredRepeatWrapping;
+  tex.anisotropy = 8;
+  const TILE_H = 2.6, TILE_W = TILE_H * (621 / 1344);   // 벽 높이 = 이미지 1장 높이
+  const mat = new THREE.MeshStandardMaterial({ map:tex, roughness:.85, envMapIntensity:.4 });
+  for (const [name, axis] of [["wall_L", "z"], ["wall_B", "x"]]) {   // 왼쪽 벽은 z축, 뒷벽은 x축 방향으로 펼침
+    const m = scene.getObjectByName(name);
+    if (!m) continue;
+    const g = m.geometry, pos = g.attributes.position, nrm = g.attributes.normal, uv = new Float32Array(pos.count * 2);
+    const v = new THREE.Vector3(), n = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+      n.fromBufferAttribute(nrm, i);
+      const endFace = Math.abs(axis === "x" ? n.x : n.z) > 0.5;   // 벽 끝 단면은 두께 방향으로 펼쳐 줄무늬 방지
+      uv[i * 2] = (endFace ? (axis === "x" ? v.z : v.x) : (axis === "x" ? v.x : -v.z)) / TILE_W;
+      uv[i * 2 + 1] = 1 - (2.6 - v.y) / TILE_H;
+    }
+    g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    m.material = mat;
+  }
+  // 벽 윗면 띠: 벽지 바탕과 같은 흰색
+  const capMat = new THREE.MeshStandardMaterial({ color:0xfbf8f6, roughness:.7, envMapIntensity:.4 });
+  for (const name of ["wall_L_cap", "wall_B_cap"]) { const c = scene.getObjectByName(name); if (c) c.material = capMat; }
+  // 바닥: 벽지와 어울리는 흰색 마루 + 연한 회색 줄눈
+  const floorMat = new THREE.MeshStandardMaterial({ color:0xf5f1ed, roughness:.75, envMapIntensity:.4 });
+  const seamMat = new THREE.MeshStandardMaterial({ color:0xe2dbd4, roughness:.8, envMapIntensity:.4 });
+  // 액자 그림: 안쪽 판 앞면에 frame.jpg
+  const fin = scene.getObjectByName("frame_inner");
+  if (fin) {
+    const ft = new THREE.TextureLoader().load("diorama/frame.jpg");
+    ft.colorSpace = THREE.SRGBColorSpace; ft.anisotropy = 8;
+    const g = fin.geometry, pos = g.attributes.position, uv = new Float32Array(pos.count * 2), v = new THREE.Vector3();
+    g.computeBoundingBox(); const bb = g.boundingBox;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      uv[i * 2] = (v.x - bb.min.x) / (bb.max.x - bb.min.x);
+      uv[i * 2 + 1] = (v.y - bb.min.y) / (bb.max.y - bb.min.y);
+    }
+    g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    fin.material = new THREE.MeshStandardMaterial({ map:ft, roughness:.5, envMapIntensity:.4 });
+  }
+  // 러그: 투명 배경 PNG (이미지 가로축 = 러그 긴 변(z축 = Blender y))
+  const rug = scene.getObjectByName("rug_mat");
+  if (rug) {
+    const rt = new THREE.TextureLoader().load("diorama/rug_round.png");
+    rt.colorSpace = THREE.SRGBColorSpace; rt.anisotropy = 8;
+    const g = rug.geometry, pos = g.attributes.position, uv = new Float32Array(pos.count * 2), v = new THREE.Vector3();
+    g.computeBoundingBox(); const bb = g.boundingBox;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      uv[i * 2] = (v.z - bb.min.z) / (bb.max.z - bb.min.z);
+      uv[i * 2 + 1] = (v.x - bb.min.x) / (bb.max.x - bb.min.x);
+    }
+    g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    rug.material = new THREE.MeshStandardMaterial({ map:rt, roughness:1, envMapIntensity:.4, transparent:true, alphaTest:.05, depthWrite:false });
+    rug.castShadow = false; rug.renderOrder = 1;
+  }
+  scene.traverse((o) => {
+    if (!o.isMesh) return;
+    if (o.name === "floor") o.material = floorMat;
+    else if (o.name.startsWith("plank_")) o.material = seamMat;
+  });
+}
+
+// ---------- 책장: 레진 작품 표지 (books/books.json 에서 무작위 6권) ----------
+const BOOKINFO = {};
+const infoOf = (id) => id.startsWith("book:") ? BOOKINFO[id] : INFO[id];
+async function buildBooks() {
+  let list;
+  try { list = await (await fetch("diorama/books/books.json")).json(); } catch { return; }
+  list = list.sort(() => Math.random() - 0.5).slice(0, 6);
+  // Blender 책장 좌표(x, y, z) → three (x, z, -y). 칸 바닥 높이 3단, 칸마다 2권
+  const SX = -1.32, SZ = -1.70, ROWS = [0.08, 0.57, 1.07], W = 0.3, H = 0.4, T = 0.05;
+  const loader = new THREE.TextureLoader();
+  const spine = [0xf59fb4, 0xc9a8e8, 0x9cc3f0, 0xb7d3a0, 0xffd86b];
+  list.forEach((b, i) => {
+    const row = Math.floor(i / 2), col = i % 2;
+    const tex = loader.load(`diorama/books/${b.alias}_tall.jpg`);
+    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    const side = new THREE.MeshStandardMaterial({ color:spine[i % spine.length], roughness:.6 });
+    const front = new THREE.MeshStandardMaterial({ map:tex, roughness:.45 });
+    const mats = [side, side.clone(), side.clone(), side.clone(), front, side.clone()];  // +z 면 = 표지
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(W, H, T), mats);
+    mesh.position.set(SX + (col ? 0.19 : -0.19), ROWS[row] + H / 2 + 0.005, SZ);
+    mesh.rotation.y = (Math.random() - 0.5) * 0.12;
+    mesh.castShadow = mesh.receiveShadow = true;
+    const id = `book:${i}`;
+    mesh.userData.prop = id;
+    mats.forEach(m => m.envMapIntensity = 0.4);
+    (props.bookshelf ? props.bookshelf.root : scene).add(mesh);   // 책장과 함께 움직이게
+    pickables.push(mesh);
+    // aim: 어떤 책을 눌러도 책장 전체가 보이는 같은 시점으로 (구석 책이 벽에 가리지 않게)
+    props[id] = { root:mesh, meshes:[{ material:front }], baseY:mesh.position.y, baseS:mesh.scale.clone() };
+    BOOKINFO[id] = {
+      label: b.title, view: [0, 0.12, 1], dist: 6, aim: "prop_bookshelf", tag: "LEZHIN COMICS", title: b.title, author: b.authors.join(", "),
+      body: "책장에서 꺼낸 레진 작품. 버튼을 누르면 작품 페이지로 이동합니다.",
+      cta: "작품 보러가기", img: `diorama/books/${b.alias}_thumb.jpg`, url: b.url,
+    };
+  });
+}
+
+// ---------- 호버 / 클릭 ----------
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+const tip = document.getElementById("tip");
+let hovered = null, focused = null, downAt = null;
+
+function pick(e) {
+  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObjects(scene.children, true)[0];   // 앞에 가린 물체가 있으면 소품 아님
+  return hit && hit.object.userData.prop || null;
+}
+function setHover(id) {
+  if (id === hovered) return;
+  if (hovered) {
+    const p = props[hovered];
+    p.meshes.forEach(m => gsap.to(m.material.emissive, { ...(m.userData?.glow || { r:0, g:0, b:0 }), duration:.25 }));
+    gsap.to(p.root.position, { y:p.baseY, duration:.35, ease:"power2.out" });
+  }
+  hovered = id;
+  document.body.style.cursor = id ? "pointer" : "";
+  tip.style.opacity = id ? 1 : 0;
+  if (id) {
+    tip.textContent = infoOf(id).label;
+    const p = props[id];
+    p.meshes.forEach(m => gsap.to(m.material.emissive, { r:.18, g:.12, b:.14, duration:.25 }));
+    gsap.to(p.root.position, { y:p.baseY + 0.08, duration:.35, ease:"back.out(3)" });
+  }
+}
+renderer.domElement.addEventListener("pointermove", (e) => {
+  tip.style.left = e.clientX + "px"; tip.style.top = e.clientY + "px";
+  if (e.pointerType === "mouse") setHover(pick(e));
+});
+renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;  // 드래그는 클릭 아님
+  const id = pick(e);
+  if (id) activate(id);
+  else if (focused) closePanel(false);   // 빈 곳 클릭 = 돌아가기
+});
+
+function bounce(id) {
+  const p = props[id];
+  gsap.fromTo(p.root.scale, { x:p.baseS.x * 1.12, y:p.baseS.y * .88, z:p.baseS.z * 1.12 },
+    { x:p.baseS.x, y:p.baseS.y, z:p.baseS.z, duration:.6, ease:"elastic.out(1,.4)" });
+}
+// ---------- 스탠드 ON/OFF: 방 전체 분위기 전환 ----------
+// ON(기본) = 평소 밝기 + 스탠드 주변만 은은하게 / OFF = 방 전체 명도를 살짝 낮춤
+const MOOD = {
+  on:  { sun:1.3,  sunC:0xfff3ea, hemi:.35, hemiC:0xffffff, env:.4,  lamp:.3, halo:0, night:0,   bulb:{ r:1, g:.82, b:.45 }, sky:0x8ccbf5 },
+  off: { sun:.95,  sunC:0xe6e6f5, hemi:.26, hemiC:0xe8e8ff, env:.28, lamp:0,  halo:0,   night:.22, bulb:{ r:0, g:0, b:0 }, sky:0x6f9fcf },
+};
+const rgb = (hex) => { const c = new THREE.Color(hex); return { r:c.r, g:c.g, b:c.b }; };
+let lampOn = false, fairyOn = false;
+const envK = { v:.4 };
+// 미니전구가 켜져 있으면 방 전체를 살짝 저녁 톤으로 낮춰 전구가 빛나 보이게 함
+const DIM = { sun:.62, hemi:.6, env:.6, night:.16, warm:0xffdfe6, sky:0x5d86b8 };
+function setLamp(on, instant) { lampOn = on; applyMood(instant); }
+function applyMood(instant) {
+  const b = lampOn ? MOOD.on : MOOD.off, d = instant ? 0 : .6, f = fairyOn;
+  const sunC = f ? new THREE.Color(b.sunC).lerp(new THREE.Color(DIM.warm), .6) : new THREE.Color(b.sunC);
+  gsap.to(sun, { intensity: b.sun * (f ? DIM.sun : 1), duration:d });
+  gsap.to(sun.color, { r:sunC.r, g:sunC.g, b:sunC.b, duration:d });
+  gsap.to(hemi, { intensity: b.hemi * (f ? DIM.hemi : 1), duration:d });
+  gsap.to(hemi.color, { ...rgb(b.hemiC), duration:d });
+  gsap.to(lampLight, { intensity:b.lamp, duration:d });
+  gsap.to(halo.material, { opacity:b.halo, duration:d });
+  gsap.to("#night", { opacity: Math.min(.4, b.night + (f ? DIM.night : 0)), duration:d });
+  gsap.to(envK, { v: b.env * (f ? DIM.env : 1), duration:d, onUpdate:() => scene.traverse(o => {
+    if (!o.isMesh) return;
+    (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => { if ("envMapIntensity" in mt) mt.envMapIntensity = envK.v; });
+  }) });
+  const sky = scene.getObjectByName("win_sky");   // 창밖도 같이 어두워짐
+  const skyC = f ? DIM.sky : b.sky;
+  if (sky) { gsap.to(sky.material.color, { ...rgb(skyC), duration:d }); gsap.to(sky.material.emissive, { ...rgb(skyC), duration:d }); }
+  const bulb = scene.getObjectByName("lamp_bulb");
+  if (bulb) { bulb.userData.glow = b.bulb; gsap.to(bulb.material.emissive, { ...b.bulb, duration:d }); }
+}
+// ---------- 미니전구: 전구마다 작은 빛 번짐 + 켜지면 방 전체 톤다운 ----------
+const FAIRY_ON = { r:1, g:.78, b:.42 }, FAIRY_OFF = { r:0, g:0, b:0 };
+const fairyGlows = [];
+function glowTexture() {
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d"), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, "rgba(255,226,160,1)"); gr.addColorStop(.25, "rgba(255,200,130,.35)"); gr.addColorStop(1, "rgba(255,180,120,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function setupFairy() {
+  const p = props.fairy;
+  if (!p) return;
+  const tex = glowTexture(), sum = new THREE.Vector3(); let n = 0;
+  p.meshes.forEach((m) => {
+    if (m.name.startsWith("fairy_hit")) {                 // 클릭 판정용: 보이지 않게
+      m.material.visible = false; m.castShadow = m.receiveShadow = false; return;
+    }
+    m.castShadow = false;
+    if (!m.name.startsWith("fairy_b_")) return;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, color:0xffffff, transparent:true, opacity:0,
+      blending:THREE.AdditiveBlending, depthWrite:false }));
+    s.scale.setScalar(0.15); s.raycast = () => {};       // 빛 번짐은 클릭을 가로막지 않게
+    m.geometry.computeBoundingBox(); m.geometry.boundingBox.getCenter(s.position);   // 노드 원점이 0이라 실제 전구 중심에 둠
+    m.add(s); fairyGlows.push(s);
+    sum.add(new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3())); n++;
+  });
+  setFairy(true, true);   // 시작은 켜진 상태
+}
+function setFairy(on, instant) {
+  fairyOn = on;
+  const d = instant ? 0 : .5, col = on ? FAIRY_ON : FAIRY_OFF;
+  props.fairy.meshes.forEach((m, i) => {
+    if (!m.name.startsWith("fairy_b_")) return;
+    m.userData.glow = col;
+    gsap.to(m.material.emissive, { ...col, duration:d, delay: instant ? 0 : i * 0.012 });   // 줄을 따라 차례로 켜짐
+  });
+  fairyGlows.forEach((s, i) => gsap.to(s.material, { opacity: on ? .7 : 0, duration:d, delay: instant ? 0 : i * 0.012 }));
+  applyMood(instant);   // 전구 켜짐 = 방 톤다운, 꺼짐 = 원래 밝기
+}
+function activate(id) {
+  const info = infoOf(id);
+  if (info.toggle !== "fairy") bounce(id);   // 가랜드는 방 전체에 걸쳐 있어 튕기면 어색함
+  if (info.go) { window.open(info.go, "_blank", "noopener"); return; }
+  if (info.link) {   // 1번째 클릭: 화면 정면으로 이동 → 도착하면 '사이트 들어가기' 버튼
+    if (focused === id) return;
+    if (!focused) history.pushState({ zoom:id }, "");
+    focused = id;
+    if (info.book && book) aimBook(info);
+    focusOn(id, false);
+    controls.enableRotate = false;
+    hint.textContent = "빈 곳을 누르면 돌아가기";
+    siteBtn.href = info.link; siteAnchor = info;
+    siteBtn.textContent = info.btnText || "사이트 들어가기 →";
+    let wait = 1000;
+    if (info.book && book) { siteBtn.href = openBook(); wait = 2000; }   // 다가간 뒤 책이 펼쳐지고, 그다음 버튼
+    clearTimeout(siteTimer);
+    siteTimer = setTimeout(() => { siteBtn.style.display = "block"; gsap.fromTo(siteBtn, { opacity:0, y:8 }, { opacity:1, y:0, duration:.35 }); }, wait);
+    return;
+  }
+  if (info.toggle) {
+    if (info.toggle === "fairy") setFairy(!fairyOn); else setLamp(!lampOn);
+    return;
+  }
+  if (info.zoom) {
+    if (!focused) history.pushState({ zoom:id }, "");
+    focused = id;
+    focusOn(id, false);
+    hint.textContent = "책을 눌러 작품을 확인하세요 · 빈 곳을 누르면 돌아가기";
+    return;
+  }
+  if (info.wiggle) {
+    gsap.fromTo(props[id].root.rotation, { y:-0.25 }, { y:0, duration:1.2, ease:"elastic.out(1.2,.3)" });
+    return;
+  }
+  openPanel(id);
+}
+
+// ---------- 패널 + 카메라 포커스 ----------
+const panel = document.getElementById("panel");
+const hint = document.getElementById("hint"), HINT = hint.textContent;
+function focusOn(id, withPanel = true) {
+  clearRestore();
+  gsap.killTweensOf(camera.position); gsap.killTweensOf(controls.target);
+  controls.minDistance = 1;
+  const info = infoOf(id) || {};
+  const fillObj = info.fill && scene.getObjectByName(info.fill);
+  const aimObj = info.aim && scene.getObjectByName(info.aim);
+  const box = new THREE.Box3().setFromObject(fillObj || aimObj || props[id].root);
+  const c = info.aimPoint ? info.aimPoint.clone() : box.getCenter(new THREE.Vector3());
+  // view 가 있으면 그 방향(예: TV 정면)에서, 없으면 기본 아이소 각도에서 바라봄
+  const dir = info.view ? new THREE.Vector3(...info.view).normalize() : HOME.pos.clone().sub(HOME.target).normalize();
+  if (info.view) { controls.minAzimuthAngle = -Infinity; controls.maxAzimuthAngle = Infinity; }   // 회전 제한 잠시 해제
+  let dist = withPanel ? Math.max(7, box.getSize(new THREE.Vector3()).length() * 8) : box.getSize(new THREE.Vector3()).length() * 4.2;
+  if (info.dist) dist = info.dist;
+  // 패널이 왼쪽을 가리므로 대상을 화면 오른쪽에 두도록 타깃을 살짝 왼쪽으로
+  let shift = withPanel && innerWidth > 700 ? 0.6 : 0;
+  if (fillObj) {
+    // 패널 오른쪽 남은 영역 가운데에 대상이 꽉 차도록 거리·위치 계산
+    const sz = box.getSize(new THREE.Vector3());
+    const panelR = innerWidth > 700 ? panel.getBoundingClientRect().width + 20 : 0;
+    const freeW = innerWidth - panelR, k = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    dist = Math.max(sz.y / (0.8 * k), sz.x / (0.82 * k * freeW / innerHeight)) + sz.z / 2;
+    shift = (panelR / 2) * (k * dist / innerHeight);   // 화면 px → 월드 거리
+  }
+  const side = new THREE.Vector3().crossVectors(dir, camera.up).normalize().multiplyScalar(shift);
+  const tgt = c.clone().add(side);
+  gsap.to(controls.target, { x:tgt.x, y:tgt.y, z:tgt.z, duration:1, ease:"power3.inOut" });
+  const pos = tgt.clone().add(dir.multiplyScalar(dist));
+  gsap.to(camera.position, { x:pos.x, y:pos.y, z:pos.z, duration:1, ease:"power3.inOut" });
+}
+const AZ = [controls.minAzimuthAngle, controls.maxAzimuthAngle];
+let restoreTimers = [];   // 닫을 때 예약한 복원 작업 (다시 열면 취소)
+const clearRestore = () => { restoreTimers.forEach(clearTimeout); restoreTimers = []; };
+function goHome(toDefault = false) {
+  gsap.killTweensOf(camera.position); gsap.killTweensOf(controls.target);
+  const dir = (toDefault ? HOME.pos.clone().sub(HOME.target) : camera.position.clone().sub(controls.target)).normalize().multiplyScalar(HOME.pos.length());
+  if (toDefault) restoreTimers.push(setTimeout(() => { [controls.minAzimuthAngle, controls.maxAzimuthAngle] = AZ; }, 1050));   // 복귀 후 회전 제한 복원
+  const pos = HOME.target.clone().add(dir);
+  gsap.to(controls.target, { ...HOME.target, duration:1, ease:"power3.inOut" });
+  gsap.to(camera.position, { x:pos.x, y:pos.y, z:pos.z, duration:1, ease:"power3.inOut" });
+}
+function openPanel(id) {
+  const s = infoOf(id);
+  pTag.textContent = s.tag; pTitle.textContent = s.title; pBody.textContent = s.body; pCta.textContent = s.cta;
+  pAuthor.textContent = s.author || "";
+  pImg.style.display = s.img ? "block" : "none";
+  if (s.img) pImg.src = s.img;
+  pCta.onclick = s.url ? () => window.open(s.url, "_blank", "noopener") : null;
+  pCta.style.display = s.cta ? "" : "none";
+  vlist.style.display = s.videos ? "flex" : "none";
+  panel.classList.toggle("vmode", !!s.videos);
+  hint.style.opacity = s.videos ? 0 : "";   // 영상 볼 때 하단 안내 숨김
+  if (s.videos) {
+    renderVideos();
+    controls.enableRotate = false;            // 영상 보는 동안 시점 고정 (플레이어가 화면에 맞게 겹쳐 있도록)
+    setTimeout(() => { if (focused === id) playVideo(0); }, 1050);
+  }
+  if (!focused) history.pushState({ panel:id }, "");
+  focused = id;
+  focusOn(id);
+  gsap.to(panel, { x:0, duration:.6, ease:"power3.out" });
+  gsap.fromTo(["#pImg","#pTag","#pTitle","#pAuthor","#pBody","#pCta","#vlist"], { y:14, opacity:0 }, { y:0, opacity:1, stagger:.06, delay:.2, duration:.4 });
+}
+function closePanel(fromHistory) {
+  if (!focused) return;
+  clearTimeout(siteTimer); siteBtn.style.display = "none";
+  if (book && book.open) closeBook();
+  const wasView = !!(infoOf(focused) || {}).view;
+  focused = null;
+  stopVideo();
+  controls.enableRotate = true;
+  hint.textContent = HINT;
+  hint.style.opacity = "";
+  gsap.to(panel, { x:"-115%", duration:.45, ease:"power2.in" });
+  goHome(wasView);
+  restoreTimers.push(setTimeout(() => { controls.minDistance = 12; }, 1000));
+  if (!fromHistory) history.back();
+}
+document.getElementById("back").onclick = () => closePanel(false);
+addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(false); });
+addEventListener("popstate", () => closePanel(true));
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); fit();
+});
+
+// 테스트용
+window.__activate = activate; window.__setLamp = setLamp; window.__setFairy = setFairy; window.__books = BOOKINFO; window.__props = props; window.__cam = camera; window.__controls = controls;
+
+// ---------- TV 영상 (유튜브) ----------
+let VIDEOS = [], current = -1;
+fetch("diorama/videos.json").then(r => r.json()).then(v => VIDEOS = v).catch(() => {});
+const ytWrap = document.getElementById("ytWrap"), yt = document.getElementById("yt");
+function renderVideos() {
+  vlist.innerHTML = "";
+  VIDEOS.forEach((v, i) => {
+    const b = document.createElement("button");
+    b.className = "vitem" + (i === current ? " on" : "");
+    b.innerHTML = `<img src="${v.thumb}" alt=""><span></span>`;
+    b.querySelector("span").textContent = v.title;
+    b.onclick = () => playVideo(i);
+    vlist.appendChild(b);
+  });
+}
+function playVideo(i) {
+  const v = VIDEOS[i]; if (!v) return;
+  current = i;
+  yt.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1`;
+  ytWrap.style.display = "block";
+  gsap.fromTo(ytWrap, { opacity:0 }, { opacity:1, duration:.4 });
+  [...vlist.children].forEach((b, k) => b.classList.toggle("on", k === i));
+}
+function stopVideo() { yt.src = "about:blank"; ytWrap.style.display = "none"; current = -1; }
+// ---------- 스툴 위 책: 펼치기 (위 표지를 책등 축으로 넘김) + 봄툰 소설 한 편 ----------
+// 펼친 면: 왼쪽 = 작품 표지, 오른쪽 = 제목·작가·줄거리. 책 로컬 좌표: x = 책 긴 축(페이지 위쪽 = +x), z = 책등 방향
+let book = null, NOVELS = [];
+fetch("diorama/novels/novels.json").then(r => r.json()).then(d => { NOVELS = d; }).catch(() => {});
+function quad(pts, mat) {   // pts: [좌하, 우하, 좌상, 우상]
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pts.flat(), 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2));
+  g.setIndex([0, 1, 2, 2, 1, 3]); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.userData.prop = "diary"; return m;
+}
+function setupBook() {
+  const p = props.diary; if (!p) return;
+  const root = p.root, cover = scene.getObjectByName("diary_cover_t"), spine = scene.getObjectByName("diary_spine"),
+        pages = scene.getObjectByName("diary_pages");
+  if (!cover || !spine || !pages) return;
+  root.updateMatrixWorld(true);
+  const boxIn = (o) => { o.geometry.computeBoundingBox(); return o.geometry.boundingBox.clone().applyMatrix4(o.matrix); };   // 책 로컬 기준
+  const cb = boxIn(cover), pb = boxIn(pages), sc = boxIn(spine).getCenter(new THREE.Vector3());
+  const sgn = Math.sign(sc.z - cb.getCenter(new THREE.Vector3()).z) || 1;   // 책등이 +z 쪽인지
+  const hinge = new THREE.Vector3(0, (cb.min.y + cb.max.y) / 2, sgn > 0 ? cb.max.z : cb.min.z);
+  const pivot = new THREE.Group(); pivot.position.copy(hinge); root.add(pivot);
+  [cover, scene.getObjectByName("diary_band")].filter(Boolean).forEach(o => pivot.attach(o));
+  const bandEnds = ["diary_band_end-1", "diary_band_end1"].map(n => scene.getObjectByName(n)).filter(Boolean);
+  const X = (cb.max.x - cb.min.x) / 2 * 0.9, W = (cb.max.z - cb.min.z) * 0.92, m = 0.03, t = (cb.max.y - cb.min.y) / 2 + 0.0008;
+  const cream = () => new THREE.MeshStandardMaterial({ color:0xfffaf0, roughness:.85, envMapIntensity:.4, side:THREE.DoubleSide });
+  const z = (v) => v * sgn;
+  // 오른쪽 면: 넘어간 표지 안쪽 (닫힌 상태 기준 좌표, 아래를 향함 → 넘기면 위를 향함)
+  const right = quad([[-X, -t, z(-m)], [-X, -t, z(-W)], [X, -t, z(-m)], [X, -t, z(-W)]], cream());
+  pivot.add(right);
+  // 왼쪽 면: 페이지 윗면 (책등 반대쪽)
+  const py = pb.max.y + 0.0008 - hinge.y;
+  const left = quad([[-X, py, z(-W)], [-X, py, z(-m)], [X, py, z(-W)], [X, py, z(-m)]], cream());
+  left.position.copy(hinge); root.add(left);
+  left.visible = right.visible = false;
+  book = { root, pivot, sgn, bandEnds, left, right, loader:new THREE.TextureLoader(), open:false, last:-1,
+           center: hinge.clone(), btnLocal: new THREE.Vector3(-X - 0.02, py + hinge.y, hinge.z) };
+}
+function aimBook(info) {   // 펼친 면 가운데를, 페이지 아래쪽(-x) 방향 위에서 내려다봄
+  const r = book.root; r.updateMatrixWorld(true);
+  info.aimPoint = book.center.clone(); r.localToWorld(info.aimPoint);
+  const d = new THREE.Vector3(-1, 0, 0).transformDirection(r.matrixWorld); d.y = 0; d.normalize();
+  info.view = [d.x * 0.8, 1, d.z * 0.8];
+}
+function pageText(n) {   // 오른쪽 면: 제목 / 작가 / 줄거리
+  const c = document.createElement("canvas"); c.width = 420; c.height = 600;
+  const g = c.getContext("2d"), F = "'Pretendard','Noto Sans KR','Malgun Gothic',sans-serif";
+  g.fillStyle = "#fffaf0"; g.fillRect(0, 0, c.width, c.height);
+  const wrap = (txt, x, y, w, lh, max) => {   // 글자 단위 줄바꿈, max 줄 넘으면 말줄임
+    const lines = []; let line = "";
+    for (const ch of txt.replace(/\s+/g, " ").trim()) {
+      if (g.measureText(line + ch).width > w) { lines.push(line); line = ch.trim(); } else line += ch;
+    }
+    if (line) lines.push(line);
+    if (lines.length > max) { lines.length = max; lines[max - 1] = lines[max - 1].slice(0, -1) + "…"; }
+    lines.forEach((l, k) => g.fillText(l, x, y + k * lh));
+    return y + lines.length * lh;
+  };
+  g.fillStyle = "#ff2eac"; g.font = `700 20px ${F}`; g.fillText("BOMTOON NOVEL", 34, 64);
+  g.fillStyle = "#2f2335"; g.font = `800 36px ${F}`;
+  const y = wrap(n.title, 34, 118, 352, 46, 2);
+  g.fillStyle = "#8a7f86"; g.font = `500 22px ${F}`; g.fillText(n.author, 34, y + 4);
+  g.strokeStyle = "#f3d6e4"; g.lineWidth = 2; g.beginPath(); g.moveTo(34, y + 30); g.lineTo(386, y + 30); g.stroke();
+  g.fillStyle = "#4a4048"; g.font = `400 20px ${F}`;
+  wrap(n.synopsis, 34, y + 70, 352, 32, Math.floor((560 - (y + 70)) / 32));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+function openBook() {
+  if (!NOVELS.length) return "https://www.bomtoon.com/bom/novel/main";
+  let i; do { i = Math.floor(Math.random() * NOVELS.length); } while (NOVELS.length > 1 && i === book.last);
+  book.last = i; const n = NOVELS[i];
+  const img = book.loader.load(`diorama/novels/${n.alias}.jpg`); img.colorSpace = THREE.SRGBColorSpace; img.anisotropy = 8;
+  book.left.material.map = img; book.left.material.needsUpdate = true;
+  book.right.material.map = pageText(n); book.right.material.needsUpdate = true;
+  book.left.visible = book.right.visible = true;
+  book.open = true;
+  gsap.killTweensOf(book.pivot.rotation);
+  book.bandEnds.forEach(o => o.visible = false);
+  gsap.to(book.pivot.rotation, { x: book.sgn * (Math.PI + 0.26), duration:.9, delay:.95, ease:"power2.inOut" });
+  return n.url;
+}
+function closeBook() {
+  book.open = false;
+  gsap.killTweensOf(book.pivot.rotation);
+  gsap.to(book.pivot.rotation, { x:0, duration:.6, ease:"power2.inOut", onComplete:() => {
+    if (book.open) return;
+    book.bandEnds.forEach(o => o.visible = true); book.left.visible = book.right.visible = false;
+  } });
+}
+// '사이트 들어가기' 버튼: 모니터 아래 가운데에 매 프레임 맞춤
+const siteBtn = document.getElementById("siteBtn");
+let siteTimer = 0, siteAnchor = null;
+function placeSiteBtn() {
+  if (siteBtn.style.display !== "block") return;
+  if (siteAnchor && siteAnchor.book && book) {   // 펼친 책: 아래쪽 가장자리 바로 밑
+    _v.copy(book.btnLocal); book.root.localToWorld(_v).project(camera);
+    siteBtn.style.left = (_v.x + 1) / 2 * innerWidth + "px";
+    siteBtn.style.top = (1 - _v.y) / 2 * innerHeight + 34 + "px";
+    return;
+  }
+  const m = siteAnchor && scene.getObjectByName(siteAnchor.btnAt); if (!m) return;
+  const bb = new THREE.Box3().setFromObject(m);
+  // btnMid: 납작한 물건(책)은 중심 아래쪽 화면 좌표에, 아니면 물체 밑변 가운데 아래에 버튼을 둠
+  if (siteAnchor.btnMid) bb.getCenter(_v); else _v.set((bb.min.x + bb.max.x) / 2, bb.min.y, bb.max.z);
+  _v.project(camera);
+  siteBtn.style.left = (_v.x + 1) / 2 * innerWidth + "px";
+  siteBtn.style.top = (1 - _v.y) / 2 * innerHeight + (siteAnchor.btnMid ? 70 : 18) + "px";
+}
+// TV 화면(3D)의 앞면 네 귀퉁이를 화면 좌표로 투영해 플레이어 위치·크기를 매 프레임 맞춤
+const _v = new THREE.Vector3();
+function placePlayer() {
+  if (ytWrap.style.display !== "block") return;
+  const scr = scene.getObjectByName("tv_screen"); if (!scr) return;
+  const bb = new THREE.Box3().setFromObject(scr);
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.min.y, bb.max.y]) {
+    _v.set(x, y, bb.max.z).project(camera);
+    const sx = (_v.x + 1) / 2 * innerWidth, sy = (1 - _v.y) / 2 * innerHeight;
+    x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+  }
+  const inset = (x1 - x0) * 0.02;
+  Object.assign(ytWrap.style, { left:x0 + inset + "px", top:y0 + inset + "px", width:x1 - x0 - inset * 2 + "px", height:y1 - y0 - inset * 2 + "px" });
+}
+
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); placePlayer(); placeSiteBtn(); });
+</script>
+</body>
+</html>
