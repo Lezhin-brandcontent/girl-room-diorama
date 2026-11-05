@@ -154,12 +154,32 @@ camera.position.copy(HOME.pos);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.copy(HOME.target);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
-controls.enablePan = false;
+controls.screenSpacePanning = true;   // 팬: 우클릭·⌘/Shift+드래그, 모바일 두 손가락 드래그
+const PAN_MIN = new THREE.Vector3(-2.2, 0, -2.2), PAN_MAX = new THREE.Vector3(2.2, 4, 2.2);   // 방 밖으로 못 나가게 시점 중심 제한
 controls.minAzimuthAngle = THREE.MathUtils.degToRad(15);   // 벽 뒷면이 안 보이게 회전 제한
 controls.maxAzimuthAngle = THREE.MathUtils.degToRad(75);
 controls.minPolarAngle = THREE.MathUtils.degToRad(35);
 controls.maxPolarAngle = THREE.MathUtils.degToRad(72);
-controls.minDistance = 12; controls.maxDistance = 30;
+const MIN_DIST = 6;   // 기본 화면에서 다가갈 수 있는 최소 거리 (시작 거리 23)
+controls.minDistance = MIN_DIST; controls.maxDistance = 30;
+
+// 휠·트랙패드 줌: OrbitControls(r160) 휠 줌은 이벤트당 고정 배율이라 트랙패드에서 튀어서 delta 크기대로 직접 처리
+// (모바일 핀치는 OrbitControls 그대로. 캡처 단계에서 가로채 OrbitControls 휠 핸들러까지 안 가게 함)
+function zoomBy(f) {
+  const off = camera.position.clone().sub(controls.target);
+  off.setLength(THREE.MathUtils.clamp(off.length() * f, controls.minDistance, controls.maxDistance));
+  camera.position.copy(controls.target).add(off);
+}
+addEventListener("wheel", (e) => {
+  if (e.target !== renderer.domElement) return;
+  e.preventDefault(); e.stopPropagation();
+  const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);
+  zoomBy(Math.exp(dy * (e.ctrlKey ? 0.01 : 0.001)));   // ctrlKey = 트랙패드 핀치(크롬·파이어폭스)
+}, { capture:true, passive:false });
+// 사파리 트랙패드 핀치는 wheel 이 아니라 gesture 이벤트로 옴
+let gestureScale = 1;
+renderer.domElement.addEventListener("gesturestart", (e) => { e.preventDefault(); gestureScale = e.scale; });
+renderer.domElement.addEventListener("gesturechange", (e) => { e.preventDefault(); zoomBy(gestureScale / e.scale); gestureScale = e.scale; });
 
 function fit() {
   // 세로 화면이면 멀리서 보기
@@ -799,7 +819,7 @@ function closePanel(fromHistory) {
   hint.style.opacity = "";
   gsap.to(panel, { x:"-115%", duration:.45, ease:"power2.in" });
   goHome(wasView);
-  restoreTimers.push(setTimeout(() => { controls.minDistance = 12; }, CAM_T * 1000));
+  restoreTimers.push(setTimeout(() => { controls.minDistance = MIN_DIST; }, CAM_T * 1000));
   if (!fromHistory) history.back();
 }
 document.getElementById("back").onclick = () => closePanel(false);
@@ -1341,7 +1361,11 @@ function placePlayer() {
   Object.assign(ytWrap.style, { left:x0 + inset + "px", top:y0 + inset + "px", width:x1 - x0 - inset * 2 + "px", height:y1 - y0 - inset * 2 + "px" });
 }
 
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); placePlayer(); placeSiteBtn(); placePhoneNav(); });
+renderer.setAnimationLoop(() => {
+  controls.enablePan = controls.enableRotate;   // 시점 고정 중(소품 정면·영상)엔 팬도 막음
+  controls.update();
+  const d = controls.target.clone().clamp(PAN_MIN, PAN_MAX).sub(controls.target);
+  controls.target.add(d); camera.position.add(d); renderer.render(scene, camera); placePlayer(); placeSiteBtn(); placePhoneNav(); });
 </script>
 </body>
 </html>
