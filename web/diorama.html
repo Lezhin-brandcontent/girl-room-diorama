@@ -368,34 +368,131 @@ async function buildGoods() {
   const n = new THREE.Vector3(1, 0, 0).transformDirection(root.matrixWorld);
   const view = [n.x, 0.1, n.z];
   INFO.corkboard.view = view;
-  const W = 0.15, H = 0.2;                                   // 카드 크기 (사진 3:4)
-  const loader = new THREE.TextureLoader();
+  corkTexture(board);
+  // 폴라로이드처럼: 흰 종이 + 사진 + 아래 여백에 상품명. 윗부분만 고정돼서 아래로 갈수록 살짝 들뜸
+  const PW = 0.14, PH = 0.188;   // 테이프·기울기까지 코르크 판(0.58 x 0.46) 안에 들어오는 크기
   const PINS = [0xff6f9a, 0x8fc3ff, 0xffd166, 0xa7e3a1, 0xc6a8ff, 0xff9f6b];
+  const TAPES = ["255,190,210", "190,225,255", "255,230,160", "200,235,190"];
+  const shadowTex = softShadowTex();
   list.forEach((g, i) => {
     const row = Math.floor(i / 3), col = i % 3;
-    const tex = loader.load(`diorama/goods/${g.no}.jpg`); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-    // 사진이 벽 조명에 묻혀 회색으로 보여서, 사진 자체를 살짝 발광시켜 흰 배경을 살림 (호버가 끝나면 이 밝기로 돌아감)
-    const mt = new THREE.MeshStandardMaterial({ map:tex, emissiveMap:tex, emissive:new THREE.Color(.18, .18, .18), roughness:.7, envMapIntensity:.4 });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), mt);
-    mesh.userData.glow = { r:.18, g:.18, b:.18 };
-    mesh.rotation.set(0, Math.PI / 2, (Math.random() - 0.5) * 0.12);   // 벽을 바라보게 + 손으로 꽂은 듯 살짝 삐뚤게
-    // 그룹 좌표에서 three z(=Blender -y) 가 보드 가로, y 가 세로. 3칸 x 2줄
-    mesh.position.set(face.x + i * 0.0004, face.y + (row ? -0.115 : 0.115), face.z + (col - 1) * 0.185);
-    mesh.receiveShadow = true;
-    const pin = new THREE.Mesh(new THREE.SphereGeometry(0.011, 16, 12), new THREE.MeshStandardMaterial({ color:PINS[i % PINS.length], roughness:.3 }));
-    pin.position.set(0, H / 2 - 0.018, 0.008); pin.castShadow = true;   // 카드 윗부분 가운데 압정
-    mesh.add(pin);
+    const { tex, ready } = polaroidTex(`diorama/goods/${g.no}.jpg`, g.name);
+    const mt = new THREE.MeshStandardMaterial({ map:tex, emissiveMap:tex, emissive:new THREE.Color(.16, .16, .16), roughness:.8, envMapIntensity:.4, side:THREE.DoubleSide });
+    const geo = new THREE.PlaneGeometry(PW, PH, 6, 10), pos = geo.attributes.position;
+    for (let k = 0; k < pos.count; k++) {   // 아래로 갈수록 보드에서 떨어짐 (위는 압정·테이프로 붙어 있음)
+      const t = (PH / 2 - pos.getY(k)) / PH;
+      pos.setZ(k, 0.006 * t * t * t);
+    }
+    geo.computeVertexNormals();
+    const card = new THREE.Mesh(geo, mt);
+    card.userData.glow = { r:.16, g:.16, b:.16 };
+    const tilt = (Math.random() - 0.5) * 0.1;
+    card.rotation.set(0, Math.PI / 2, tilt);
+    card.position.set(face.x + 0.003 + i * 0.0004, face.y + (row ? -0.104 : 0.112), face.z + (col - 1) * 0.18);
+    card.castShadow = true;
+    // 보드에 지는 부드러운 그림자 (실시간 그림자는 너무 얇아 안 보여서 따로 깜)
+    const sh = new THREE.Mesh(new THREE.PlaneGeometry(PW * 1.25, PH * 1.2),
+      new THREE.MeshBasicMaterial({ map:shadowTex, transparent:true, opacity:.45, depthWrite:false }));
+    sh.position.set(0.006, -0.008, -0.0025); sh.raycast = () => {};
+    card.add(sh);
     const id = `goods:${i}`;
-    mesh.userData.prop = id; pin.userData.prop = id;
-    root.add(mesh); pickables.push(mesh);
-    props[id] = { root:mesh, meshes:[mesh], baseY:mesh.position.y, baseS:mesh.scale.clone() };
+    const parts = [card];
+    if (i % 3 === 1) {   // 몇 장은 압정 대신 마스킹테이프 두 조각
+      [-1, 1].forEach((sd) => {
+        const tp = new THREE.Mesh(new THREE.PlaneGeometry(0.048, 0.017), new THREE.MeshStandardMaterial({
+          map:tapeTex(TAPES[(i + sd + 4) % TAPES.length]), transparent:true, roughness:.9, depthWrite:false }));
+        tp.position.set(sd * (PW / 2 - 0.014), PH / 2 - 0.01, 0.001); tp.rotation.z = -sd * 0.7;   // 카드 귀퉁이 안쪽에 붙여 판 밖으로 안 삐져나가게
+        tp.userData.prop = id; card.add(tp);
+      });
+    } else {
+      const pin = pushPin(PINS[i % PINS.length]);
+      pin.position.set(0, PH / 2 - 0.016, 0);
+      pin.traverse(o => { o.userData.prop = id; }); card.add(pin);
+    }
+    card.userData.prop = id;
+    root.add(card); pickables.push(card);
+    props[id] = { root:card, meshes:parts, baseY:card.position.y, baseS:card.scale.clone() };
     BOOKINFO[id] = {
-      label: g.name, view, bookZoom:true, zoomH:H, tag:"J-MEE SHOP", title:g.name,
+      label: g.name, view, fill:"cork_frame", tag:"J-MEE SHOP", title:g.name,
       author: [g.work === "자체브랜드" ? "" : g.work, g.price].filter(Boolean).join(" · "),
       body: "레진·봄툰 공식 굿즈샵 제이미샵에서 판매 중인 상품입니다.",
       cta: "굿즈샵에서 보기", img:`diorama/goods/${g.no}.jpg`, url:g.url,
     };
   });
+}
+// 코르크 질감: 크고 작은 알갱이 점 + 같은 그림을 요철(bump)로도 써서 오돌토돌하게
+function corkTexture(board) {
+  const W = 640, H = 512, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  g.fillStyle = "#cf9f6c"; g.fillRect(0, 0, W, H);
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 9000; k++) {
+    const r = rnd() < .9 ? .6 + rnd() * 1.6 : 2 + rnd() * 2.5, dark = rnd() < .55;
+    g.fillStyle = dark ? `rgba(120,72,35,${.25 + rnd() * .45})` : `rgba(240,205,160,${.25 + rnd() * .5})`;
+    g.beginPath(); g.ellipse(rnd() * W, rnd() * H, r, r * (.6 + rnd() * .5), rnd() * 3, 0, Math.PI * 2); g.fill();
+  }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const bump = new THREE.CanvasTexture(c);
+  // 원래 UV 는 상자 전개도라 앞면에 그림 일부만 크게 늘어나 붙음 → 앞면 기준으로 UV 를 다시 깖 (가로 z, 세로 y)
+  const geo = board.geometry, P = geo.attributes.position, uv = geo.attributes.uv;
+  geo.computeBoundingBox(); const bb = geo.boundingBox;
+  for (let k = 0; k < P.count; k++)
+    uv.setXY(k, (P.getZ(k) - bb.min.z) / (bb.max.z - bb.min.z), (P.getY(k) - bb.min.y) / (bb.max.y - bb.min.y));
+  uv.needsUpdate = true;
+  board.material = new THREE.MeshStandardMaterial({ map:tex, bumpMap:bump, bumpScale:1.5, roughness:.95, envMapIntensity:.4 });
+}
+// 폴라로이드 그림: 사진은 가운데를 꽉 채워 자르고(cover), 아래 넓은 여백에 상품명 손글씨 느낌
+function polaroidTex(src, name) {
+  const W = 480, H = 645, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fffdf8"; g.fillRect(0, 0, W, H);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const img = new Image();
+  const ready = new Promise((res) => { img.onload = res; img.onerror = res; });
+  img.onload = () => {
+    const m = 24, pw = W - m * 2, ph = 520, k = Math.max(pw / img.width, ph / img.height);
+    const sw = pw / k, sh = ph / k;
+    g.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, m, m, pw, ph);
+    g.strokeStyle = "rgba(0,0,0,.06)"; g.lineWidth = 2; g.strokeRect(m, m, pw, ph);
+    g.fillStyle = "#4a3a52"; g.font = '600 30px "Pretendard","Apple SD Gothic Neo",sans-serif'; g.textAlign = "center";
+    let t = name; while (g.measureText(t).width > pw - 10 && t.length > 2) t = t.slice(0, -1);
+    g.fillText(t === name ? t : t.slice(0, -1) + "…", W / 2, 595);
+    tex.needsUpdate = true;
+  };
+  img.src = src;
+  return { tex, ready };
+}
+function softShadowTex() {
+  const c = document.createElement("canvas"); c.width = 128; c.height = 160;
+  const g = c.getContext("2d");   // 캔버스 밖에 사각형을 그리고 그 그림자만 안쪽으로 → 흐린 그림자 (사파리에서도 됨)
+  g.shadowColor = "rgba(40,20,10,1)"; g.shadowBlur = 14; g.shadowOffsetX = 1000;
+  g.fillRect(14 - 1000, 14, 100, 132);
+  const t = new THREE.CanvasTexture(c); return t;
+}
+function tapeTex(rgb) {
+  const c = document.createElement("canvas"); c.width = 160; c.height = 52;
+  const g = c.getContext("2d");
+  g.fillStyle = `rgba(${rgb},.82)`;
+  g.beginPath(); g.moveTo(0, 0);   // 양 끝을 손으로 뜯은 듯 지그재그
+  for (let y = 0; y <= 52; y += 6.5) g.lineTo((y / 6.5) % 2 ? 5 : 0, y);
+  for (let y = 52; y >= 0; y -= 6.5) g.lineTo(160 - ((y / 6.5) % 2 ? 5 : 0), y);
+  g.closePath(); g.fill();
+  g.fillStyle = "rgba(255,255,255,.35)";
+  for (let x = 14; x < 150; x += 22) g.fillRect(x, 0, 8, 52);   // 줄무늬
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+// 압정: 둥근 머리 + 잘록한 목 (카드 앞쪽 = +z)
+function pushPin(color) {
+  const grp = new THREE.Group();
+  const mt = new THREE.MeshPhysicalMaterial({ color, roughness:.25, clearcoat:1, clearcoatRoughness:.15 });
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0125, 0.006, 28), mt);
+  head.rotation.x = Math.PI / 2; head.position.z = 0.012;
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.0115, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), mt);
+  cap.rotation.x = Math.PI / 2; cap.scale.y = .35; cap.position.z = 0.015;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.0075, 0.009, 20), mt);
+  neck.rotation.x = Math.PI / 2; neck.position.z = 0.0045;
+  [head, cap, neck].forEach(m => { m.castShadow = true; grp.add(m); });
+  return grp;
 }
 
 // ---------- 호버 / 클릭 ----------
