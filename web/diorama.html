@@ -51,6 +51,11 @@
   .vitem span { display:block; margin-top:7px; font-size:13px; font-weight:700; line-height:1.4; color:var(--ink); }
   /* TV 화면 위에 겹치는 유튜브 플레이어 */
   #ytWrap { position:fixed; z-index:15; display:none; overflow:hidden; border-radius:14px; background:#111; }
+  #sndBtn { position:fixed; z-index:22; top:18px; right:18px; padding:9px 16px; border-radius:999px; cursor:pointer;
+    border:1px solid rgba(255,255,255,.7); background:rgba(255,248,250,.42); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    color:#2f2335; font:700 13px/1 inherit; letter-spacing:.06em; box-shadow:0 8px 24px rgba(120,80,120,.18); }
+  #sndBtn:hover { background:rgba(255,255,255,.7); }
+  #sndBtn.on { background:rgba(255,127,168,.85); color:#fff; border-color:rgba(255,255,255,.4); }
   #ytWrap iframe { width:100%; height:100%; border:0; display:block; }
 </style>
 <script type="importmap">
@@ -68,6 +73,7 @@
 <div id="tip"></div>
 <a id="siteBtn" target="_blank" rel="noopener">사이트 들어가기 →</a>
 <div class="phNav" id="phPrev">‹</div><div class="phNav" id="phNext">›</div>
+<button id="sndBtn" aria-pressed="false">♪ 소리 꺼짐</button>
 <div id="hint">드래그로 돌려보기 · 소품을 눌러보세요</div>
 <aside id="panel" class="glass">
   <button id="back">← BACK</button>
@@ -91,12 +97,17 @@ const INFO = {
   laptop:    { label:"COMPUTER", view:[0, 0.06, 1], aim:"mon_body", dist:3.6, btnAt:"mon_base", link:"https://www.lezhin.com/ko" },   // 정면으로 다가간 뒤 '사이트 들어가기' 버튼
   tv:        { label:"TV",      view:[0, 0.05, 1], fill:"tv_body", videos:true, tag:"VIDEO", title:"영상", body:"보고 싶은 영상을 골라 보세요." },
   diary:     { label:"NOVEL",   book:true, dist:2.0, btnText:"작품 보러가기 →", link:"https://www.bomtoon.com/bom/novel/main" },   // 책으로 다가가 펼침 → 봄툰 소설 한 편 + 작품 보러가기
-  bookshelf: { label:"BOOKS",   zoom:true, view:[0, 0.12, 1], dist:8 },     // 패널 없이 책장으로 다가가기만 (책을 눌러 작품 보기)
+  bookshelf: { label:"BOOKS",   zoom:true, view:[0, 0.12, 1], dist:8 },
+  corkboard: { label:"GOODS",   zoom:true, view:[0, 0.1, 1], dist:2.7, zoomHint:"굿즈를 눌러 상품을 확인하세요 · 빈 곳을 누르면 돌아가기" },   // 뒷벽 TV 위 보드: 정면으로 다가감 (view 는 buildGoods 에서 보드 방향으로 다시 맞춤)     // 패널 없이 책장으로 다가가기만 (책을 눌러 작품 보기)
   window:    { get label() { return isNight ? "DAY" : "NIGHT"; }, toggle:"night" },   // 창문: 눌러서 낮↔밤 (밤이면 스탠드·미니전구 자동 켜짐)
   frame:     { label:"POSTER",  view:[0, 0.05, 1], dist:6.5, img:"diorama/frame.jpg", tag:"NOTICE",    title:"공지",       body:"액자 — 최신 공지/키비주얼을 거는 자리.",         cta:"공지 보기" },
-  phone:     { label:"PHONE",   view:[0, 1, 0.38], aim:"phone_screen", dist:0.82, btnAt:"phone_body", phone:true,
+  rug:       { label:"", toggle:"rug", noLift:true },   // 이스터에그: 이름 안 띄움. 누르면 앞 귀퉁이가 들춰짐
+  doll:      { label:"???", view:[0.55, 1, 0.75], fill:"prop_doll", noLift:true, img:"diorama/egg_paper.png", tag:"EASTER EGG", title:"찾았다!",
+               body:"러그 밑에 숨어 있던 친구를 찾았어요. 다른 사람한테는 비밀!" },
+  phone:     { label:"PHONE",   view:[0, 1, 0.38], aim:"phone_screen", dist:0.62, btnAt:"phone_body", phone:true,
                link:"https://www.lezhin.com/ko", btnText:"이벤트 보러가기 →" },   // 위에서 내려다보며 다가감 → 화면에 레진 이벤트 팝업
   lamp:      { label:"LAMP",    toggle:true },
+  radio:     { get label() { return snd.bgmOn ? "MUSIC OFF" : "MUSIC"; }, toggle:"radio" },   // 라디오: 배경음악 켜기/끄기
   fairy:     { label:"LIGHTS",  toggle:"fairy" },   // 벽 미니전구: 눌러서 켜고 끄기   // 패널 없이 불 켜고 끄기
 };
 
@@ -194,6 +205,7 @@ new GLTFLoader().load("diorama/girl_room.glb?v=" + Date.now(), (gltf) => {
     const lp = props.laptop; if (lp) lp.meshes = lp.meshes.filter(m => m !== mon);   // 호버 하이라이트(emissive)는 화면 제외
   }
   buildBooks();
+  buildGoods();
   setupBook();
   // 스툴 위 책 표지: 봄툰 이미지 (위 표지 윗면에 얇은 판으로 덧붙임)
   const cov = scene.getObjectByName("diary_cover_t");
@@ -215,7 +227,7 @@ new GLTFLoader().load("diorama/girl_room.glb?v=" + Date.now(), (gltf) => {
     lampLight.position.copy(halo.position).add(new THREE.Vector3(-0.2, -0.2, 0.45));
   }   // 노드 원점이 아니라 실제 전구 위치
   setupNightSky();
-  setupPhone();
+  setupPhone(); setupRug(); setupRadio();
   setLamp(false, true);   // 시작은 불 끈 낮 (창문을 눌러 밤으로)
   setupFairy();
   gsap.to("#loading", { opacity:0, duration:.5, onComplete:() => document.getElementById("loading").remove() });
@@ -277,6 +289,11 @@ function applyWallpaper() {
   // 러그: 투명 배경 PNG (이미지 가로축 = 러그 긴 변(z축 = Blender y))
   const rug = scene.getObjectByName("rug_mat");
   if (rug) {
+    // 들출 수 있게 잘게 나눈 판으로 바꿈 (Blender 판은 귀퉁이 4개뿐이라 휘어지지 않음)
+    rug.geometry.computeBoundingBox();
+    const b0 = rug.geometry.boundingBox, s0 = b0.getSize(new THREE.Vector3()), c0 = b0.getCenter(new THREE.Vector3());
+    const pg = new THREE.PlaneGeometry(s0.x, s0.z, 70, 90); pg.rotateX(-Math.PI / 2); pg.translate(c0.x, c0.y, c0.z);
+    rug.geometry = pg;
     const rt = new THREE.TextureLoader().load("diorama/rug_round.png");
     rt.colorSpace = THREE.SRGBColorSpace; rt.anisotropy = 8;
     const g = rug.geometry, pos = g.attributes.position, uv = new Float32Array(pos.count * 2), v = new THREE.Vector3();
@@ -287,7 +304,7 @@ function applyWallpaper() {
       uv[i * 2 + 1] = (v.x - bb.min.x) / (bb.max.x - bb.min.x);
     }
     g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-    rug.material = new THREE.MeshStandardMaterial({ map:rt, roughness:1, envMapIntensity:.4, transparent:true, alphaTest:.05, depthWrite:false });
+    rug.material = new THREE.MeshStandardMaterial({ map:rt, roughness:1, envMapIntensity:.4, transparent:true, alphaTest:.05, side:THREE.DoubleSide });   // 들추면 뒷면이 보임. 접힌 부분이 아래 러그에 덮이지 않게 깊이 기록
     rug.castShadow = false; rug.renderOrder = 1;
   }
   scene.traverse((o) => {
@@ -299,7 +316,7 @@ function applyWallpaper() {
 
 // ---------- 책장: 레진 작품 표지 (books/books.json 에서 무작위 6권) ----------
 const BOOKINFO = {};
-const infoOf = (id) => id.startsWith("book:") ? BOOKINFO[id] : INFO[id];
+const infoOf = (id) => BOOKINFO[id] || INFO[id];   // 책(book:N)·굿즈(goods:N) 카드는 BOOKINFO
 async function buildBooks() {
   let list;
   try { list = await (await fetch("diorama/books/books.json")).json(); } catch { return; }
@@ -334,6 +351,53 @@ async function buildBooks() {
   });
 }
 
+// ---------- 코르크보드: 제이미샵 굿즈 (goods/goods.json 에서 무작위 6개) ----------
+// 상품 사진은 tools/fetch_jmee.py 로 미리 받아 둠 (쇼핑몰 이미지가 다른 사이트에서 바로 못 불러오게 막혀 있음)
+async function buildGoods() {
+  const board = scene.getObjectByName("cork_board");
+  if (!board || !props.corkboard) return;
+  let list;
+  try { list = await (await fetch("diorama/goods/goods.json")).json(); } catch { return; }
+  list = list.sort(() => Math.random() - 0.5).slice(0, 6);
+  const root = props.corkboard.root;
+  root.updateMatrixWorld(true);
+  // 보드 앞면 = 그룹 기준 +x 쪽. 보드를 어느 벽에 걸어도 그룹 기준으로 계산하면 똑같이 붙음
+  const c = root.worldToLocal(new THREE.Box3().setFromObject(board).getCenter(new THREE.Vector3()));
+  const face = c.clone().setX(c.x + 0.012);   // 코르크 판 두께(0.02)의 절반 + 살짝 띄움
+  // 다가가는 방향 = 보드가 바라보는 방향 (월드 기준)
+  const n = new THREE.Vector3(1, 0, 0).transformDirection(root.matrixWorld);
+  const view = [n.x, 0.1, n.z];
+  INFO.corkboard.view = view;
+  const W = 0.15, H = 0.2;                                   // 카드 크기 (사진 3:4)
+  const loader = new THREE.TextureLoader();
+  const PINS = [0xff6f9a, 0x8fc3ff, 0xffd166, 0xa7e3a1, 0xc6a8ff, 0xff9f6b];
+  list.forEach((g, i) => {
+    const row = Math.floor(i / 3), col = i % 3;
+    const tex = loader.load(`diorama/goods/${g.no}.jpg`); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    // 사진이 벽 조명에 묻혀 회색으로 보여서, 사진 자체를 살짝 발광시켜 흰 배경을 살림 (호버가 끝나면 이 밝기로 돌아감)
+    const mt = new THREE.MeshStandardMaterial({ map:tex, emissiveMap:tex, emissive:new THREE.Color(.18, .18, .18), roughness:.7, envMapIntensity:.4 });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), mt);
+    mesh.userData.glow = { r:.18, g:.18, b:.18 };
+    mesh.rotation.set(0, Math.PI / 2, (Math.random() - 0.5) * 0.12);   // 벽을 바라보게 + 손으로 꽂은 듯 살짝 삐뚤게
+    // 그룹 좌표에서 three z(=Blender -y) 가 보드 가로, y 가 세로. 3칸 x 2줄
+    mesh.position.set(face.x + i * 0.0004, face.y + (row ? -0.115 : 0.115), face.z + (col - 1) * 0.185);
+    mesh.receiveShadow = true;
+    const pin = new THREE.Mesh(new THREE.SphereGeometry(0.011, 16, 12), new THREE.MeshStandardMaterial({ color:PINS[i % PINS.length], roughness:.3 }));
+    pin.position.set(0, H / 2 - 0.018, 0.008); pin.castShadow = true;   // 카드 윗부분 가운데 압정
+    mesh.add(pin);
+    const id = `goods:${i}`;
+    mesh.userData.prop = id; pin.userData.prop = id;
+    root.add(mesh); pickables.push(mesh);
+    props[id] = { root:mesh, meshes:[mesh], baseY:mesh.position.y, baseS:mesh.scale.clone() };
+    BOOKINFO[id] = {
+      label: g.name, view, bookZoom:true, zoomH:H, tag:"J-MEE SHOP", title:g.name,
+      author: [g.work === "자체브랜드" ? "" : g.work, g.price].filter(Boolean).join(" · "),
+      body: "레진·봄툰 공식 굿즈샵 제이미샵에서 판매 중인 상품입니다.",
+      cta: "굿즈샵에서 보기", img:`diorama/goods/${g.no}.jpg`, url:g.url,
+    };
+  });
+}
+
 // ---------- 호버 / 클릭 ----------
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
 const tip = document.getElementById("tip");
@@ -354,13 +418,17 @@ function setHover(id) {
   }
   hovered = id;
   document.body.style.cursor = id ? "pointer" : "";
-  tip.style.opacity = id ? 1 : 0;
+  tip.style.opacity = id && infoOf(id).label ? 1 : 0;
   if (id) {
     tip.textContent = infoOf(id).label;
     const p = props[id];
-    p.meshes.forEach(m => gsap.to(m.material.emissive, { r:.1, g:.07, b:.08, duration:.28 }));
+    p.meshes.forEach(m => {   // 원래 밝기(glow) 위에 분홍빛을 살짝 더함
+      const g0 = m.userData.glow || { r:0, g:0, b:0 };
+      gsap.to(m.material.emissive, { r:g0.r + .06, g:g0.g + .04, b:g0.b + .05, duration:.28 });
+    });
     // 튕기지 않고 살짝만 뜨게. 책은 작아서 같은 높이도 크게 보이니 더 낮게
-    const lift = id.startsWith("book:") ? 0.015 : 0.035;
+    // 예전 0.035 는 너무 붕 떠 보였음 → 들린 게 겨우 느껴질 정도로
+    const lift = infoOf(id).noLift ? 0 : id.includes(":") ? 0.006 : 0.015;   // 책·굿즈 카드는 작아서 더 낮게
     gsap.to(p.root.position, { y:p.baseY + lift, duration:.28, ease:"power2.out" });
   }
 }
@@ -378,8 +446,9 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 
 function bounce(id) {
   const p = props[id];
-  gsap.fromTo(p.root.scale, { x:p.baseS.x * 1.12, y:p.baseS.y * .88, z:p.baseS.z * 1.12 },
-    { x:p.baseS.x, y:p.baseS.y, z:p.baseS.z, duration:.6, ease:"elastic.out(1,.4)" });
+  // 예전엔 12% 찌그러뜨린 뒤 고무줄처럼 튕겨서(elastic) 가는 물건(스탠드)이 발작하듯 떨렸음 → 살짝 눌렸다 돌아오기만
+  gsap.fromTo(p.root.scale, { x:p.baseS.x * 1.03, y:p.baseS.y * .96, z:p.baseS.z * 1.03 },
+    { x:p.baseS.x, y:p.baseS.y, z:p.baseS.z, duration:.35, ease:"power2.out", overwrite:true });
 }
 // ---------- 방 분위기: 낮/밤 + 스탠드 + 미니전구 ----------
 // 낮/밤이 방의 기본 밝기를 정하고, 스탠드·미니전구는 그 위에 빛을 더함
@@ -495,7 +564,9 @@ function setFairy(on, instant, dur = .5) {
 }
 function activate(id) {
   const info = infoOf(id);
-  if (!info.toggle || info.toggle === true) bounce(id);   // 가랜드·창문은 벽에 붙어 있어 튕기면 어색함
+  if (!info.toggle) bounce(id);
+  sfx(info.toggle === "night" ? "chime" : info.toggle === "fairy" ? "twinkle" : info.toggle === "rug" ? "paper"
+    : info.toggle === true ? "switch" : info.toggle === "radio" ? null : "tap");   // 스위치류(스탠드·가랜드·창문·러그)는 불·상태만 바뀌면 충분   // 가랜드·창문은 벽에 붙어 있어 튕기면 어색함
   if (info.go) { window.open(info.go, "_blank", "noopener"); return; }
   if (info.link) {   // 1번째 클릭: 화면 정면으로 이동 → 도착하면 '사이트 들어가기' 버튼
     if (focused === id) return;
@@ -516,14 +587,17 @@ function activate(id) {
   }
   if (info.toggle) {
     if (info.toggle === "night") { setNight(!isNight); tip.textContent = info.label; }
-    else if (info.toggle === "fairy") setFairy(!fairyOn); else setLamp(!lampOn);
+    else if (info.toggle === "fairy") setFairy(!fairyOn);
+    else if (info.toggle === "rug") rugToggle();
+    else if (info.toggle === "radio") { setBgm(!snd.bgmOn); tip.textContent = info.label; }
+    else setLamp(!lampOn);
     return;
   }
   if (info.zoom) {
     if (!focused) history.pushState({ zoom:id }, "");
     focused = id;
     focusOn(id, false);
-    hint.textContent = "책을 눌러 작품을 확인하세요 · 빈 곳을 누르면 돌아가기";
+    hint.textContent = info.zoomHint || "책을 눌러 작품을 확인하세요 · 빈 곳을 누르면 돌아가기";
     return;
   }
   if (info.wiggle) {
@@ -568,7 +642,7 @@ function focusOn(id, withPanel = true) {
     const p = props[id], k = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     c.copy(p.root.position).setY(p.baseY);           // 호버로 들린 높이 말고 원래 자리 기준
     p.root.parent.localToWorld(c);
-    dist = 0.4 / (0.55 * k);
+    dist = (info.zoomH || 0.4) / (0.55 * k);
     const panelR = withPanel && innerWidth > 700 ? panel.getBoundingClientRect().width + 20 : 0;
     const off = new THREE.Vector3().crossVectors(dir, camera.up).normalize().multiplyScalar((panelR / 2) * (k * dist / innerHeight));
     const pos = c.clone().add(dir.clone().multiplyScalar(dist)), tgt = c.clone().add(off);
@@ -662,11 +736,11 @@ function playVideo(i) {
   const v = VIDEOS[i]; if (!v) return;
   current = i;
   yt.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1`;
-  ytWrap.style.display = "block";
+  ytWrap.style.display = "block"; duckBgm(true);
   gsap.fromTo(ytWrap, { opacity:0 }, { opacity:1, duration:.4 });
   [...vlist.children].forEach((b, k) => b.classList.toggle("on", k === i));
 }
-function stopVideo() { yt.src = "about:blank"; ytWrap.style.display = "none"; current = -1; }
+function stopVideo() { yt.src = "about:blank"; ytWrap.style.display = "none"; current = -1; duckBgm(false); }
 // ---------- 스툴 위 책: 펼치기 (위 표지를 책등 축으로 넘김) + 봄툰 소설 한 편 ----------
 // 펼친 면: 왼쪽 = 작품 표지, 오른쪽 = 제목·작가·줄거리. 책 로컬 좌표: x = 책 긴 축(페이지 위쪽 = +x), z = 책등 방향
 let book = null, NOVELS = [];
@@ -824,13 +898,53 @@ function drawLock() {   // 잠금화면 + 알림 카드 (가끔 켜질 때)
   });
   phone.lock.needsUpdate = true;
 }
-function drawPopup() {   // 앱 화면: 팝업 이미지를 가로에 맞춰 가운데 + 여러 장이면 점 표시
+// 팝업 뒤에 깔리는 앱 홈 화면(흉내): 로고·탭·작품 썸네일 자리. 팝업이 뜨면 어둡게 덮임
+function drawAppHome(g, b) {
+  g.fillStyle = "#fff"; g.fillRect(0, 0, PH_W, PH_H);
+  g.fillStyle = "#ff3b6b"; g.font = `800 34px ${PH_FONT}`; g.textAlign = "left"; g.textBaseline = "middle";
+  g.fillText("LEZHIN", 26, 96);
+  g.fillStyle = "#222"; g.font = `600 22px ${PH_FONT}`;
+  ["홈", "웹툰", "랭킹", "신작", "완결"].forEach((t, k) => g.fillText(t, 26 + k * 74, 146));
+  g.fillStyle = "#ff3b6b"; g.fillRect(26, 162, 26, 4);
+  // 큰 배너 자리: 지금 팝업 그림을 흐리게 깔아 색감을 맞춤
+  g.save(); g.beginPath(); g.roundRect(20, 186, PH_W - 40, 210, 18); g.clip();
+  if (b && b.img) { g.filter = "blur(6px)"; g.drawImage(b.img, 10, 150, PH_W - 20, (PH_W - 20) * b.img.height / b.img.width); g.filter = "none"; }
+  else { g.fillStyle = "#ffd0dc"; g.fillRect(20, 186, PH_W - 40, 210); }
+  g.restore();
+  const TILE = ["#f3c6d3", "#c9d6f5", "#f6e0b5", "#cfe8d2", "#e2d2f5", "#f5cfc2"];
+  for (let k = 0; k < 6; k++) {   // 작품 썸네일 2줄 x 3칸
+    const x = 20 + (k % 3) * 130, y = 420 + Math.floor(k / 3) * 236;
+    g.fillStyle = TILE[k]; g.beginPath(); g.roundRect(x, y, 118, 160, 12); g.fill();
+    g.fillStyle = "#ddd"; g.fillRect(x, y + 172, 96, 14); g.fillRect(x, y + 194, 64, 12);
+  }
+}
+// 배너 그림은 둘레에 투명한 여백(빛 번짐)이 있어서, 카드에 꽉 차게 불투명한 부분만 잘라 씀
+function opaqueBox(img) {
+  const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+  const g = c.getContext("2d"); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
+  for (let y = 0; y < c.height; y += 2) for (let x = 0; x < c.width; x += 2)
+    if (d[(y * c.width + x) * 4 + 3] > 200) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return x1 > x0 ? { x:x0 + 2, y:y0 + 2, w:x1 - x0 - 4, h:y1 - y0 - 4 } : { x:0, y:0, w:img.width, h:img.height };
+}
+function drawPopup() {   // 레진 앱처럼: 홈 화면 위에 어두운 막 + 둥근 팝업 카드(그림 + "오늘 하루 보지 않기 | 닫기")
   const g = phone.pop.image.getContext("2d"), b = phone.banners[phone.i];
   phFrame(g, () => {
-    g.fillStyle = "#16121c"; g.fillRect(0, 0, PH_W, PH_H);
+    drawAppHome(g, b);
+    g.fillStyle = "rgba(10,6,16,.62)"; g.fillRect(0, 0, PH_W, PH_H);
     if (b && b.img) {
-      const w = PH_W - 28, h = w * b.img.height / b.img.width;
-      g.drawImage(b.img, 14, (PH_H - h) / 2 + 12, w, h);
+      const k = b.crop || (b.crop = opaqueBox(b.img));
+      const w = PH_W - 56, h = Math.min(w * k.h / k.w, PH_H - 300), bar = 64;
+      const x = 28, y = (PH_H - h - bar) / 2 + 10;
+      g.save(); g.beginPath(); g.roundRect(x, y, w, h + bar, 22); g.clip();
+      g.drawImage(b.img, k.x, k.y, k.w, k.w * h / w, x, y, w, h);
+      g.fillStyle = "#fff"; g.fillRect(x, y + h, w, bar);
+      g.fillStyle = "#e6e6e6"; g.fillRect(x + w / 2, y + h + 18, 2, bar - 36);
+      g.fillStyle = "#666"; g.font = `500 18px ${PH_FONT}`; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText("오늘 하루 보지 않기", x + w / 4, y + h + bar / 2);
+      g.fillStyle = "#222"; g.font = `700 19px ${PH_FONT}`; g.fillText("닫기", x + w * 3 / 4, y + h + bar / 2);
+      g.restore();
     } else {   // 대체 화면: API 실패 / 이미지 못 불러옴
       g.fillStyle = "#ff3b6b"; g.beginPath(); g.roundRect(PH_W / 2 - 60, 320, 120, 120, 30); g.fill();
       g.fillStyle = "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
@@ -877,7 +991,8 @@ function setupPhone() {
   // 휴대폰이 비스듬히 놓여 있어서, 휴대폰 위쪽이 화면 위로 오도록 그 반대편 위에서 내려다봄
   // (Blender 의 +y = glTF 노드의 -z)
   const top = new THREE.Vector3(0, 0, -1).transformDirection(props.phone.root.matrixWorld).setY(0).normalize();
-  INFO.phone.view = [-top.x * 0.38, 1, -top.z * 0.38];
+  // 수직(약 20°)이면 뒤에 평평한 이불만 보여서 썰렁 → 약 38° 기울여 베개·침대가 뒤로 걸리게
+  INFO.phone.view = [-top.x * 0.78, 1, -top.z * 0.78];
   loadBanners();
   // 몇 초마다 화면이 잠깐 켜지며 진동 = "알림 왔다"
   setInterval(() => {
@@ -919,6 +1034,199 @@ function placePhoneNav() {   // 화살표: 팝업이 2개 이상일 때만, 휴�
   const y = (1 - L.y) / 2 * innerHeight;
   phPrev.style.left = (L.x + 1) / 2 * innerWidth - 40 + "px"; phPrev.style.top = y + "px";
   phNext.style.left = (R.x + 1) / 2 * innerWidth + 40 + "px"; phNext.style.top = y + "px";
+}
+// ---------- 소리: 효과음 + 라디오 배경음악 ----------
+// 기본은 꺼짐 (들어오자마자 소리가 나면 창을 닫음). 오른쪽 위 버튼으로 켜거나, 라디오를 누르면 켜짐
+// 음원 파일 없이 브라우저(Web Audio)에서 직접 합성 → 저작권 문제 없음.
+// 쓰고 싶은 음악이 있으면 아래 BGM_FILE 에 경로를 넣으면 그걸 재생 (권리 확인한 파일만)
+const snd = { on:false, bgmOn:false, ctx:null, master:null, bgmBus:null, noise:null, timer:null, step:0, next:0, file:undefined, ducked:false };
+const sndBtn = document.getElementById("sndBtn");
+function actx() {
+  if (!snd.ctx) {
+    const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
+    const c = snd.ctx = new C();
+    snd.master = c.createGain(); snd.master.gain.value = .6; snd.master.connect(c.destination);
+    snd.bgmBus = c.createGain(); snd.bgmBus.gain.value = 0; snd.bgmBus.connect(snd.master);
+    const len = c.sampleRate * 2, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    snd.noise = buf;
+  }
+  if (snd.ctx.state === "suspended") snd.ctx.resume();
+  return snd.ctx;
+}
+function setSound(on) {
+  snd.on = on;
+  sndBtn.textContent = on ? "♪ 소리 켜짐" : "♪ 소리 꺼짐";
+  sndBtn.classList.toggle("on", on); sndBtn.setAttribute("aria-pressed", on);
+  if (on) actx(); else if (snd.bgmOn) setBgm(false);
+}
+sndBtn.addEventListener("click", () => { setSound(!snd.on); if (snd.on) sfx("tap"); });
+document.addEventListener("visibilitychange", () => {   // 다른 탭으로 가면 멈춤
+  if (!snd.ctx) return;
+  if (document.hidden) snd.ctx.suspend(); else if (snd.on) snd.ctx.resume();
+  if (snd.audio && snd.bgmOn) document.hidden ? snd.audio.pause() : snd.audio.play().catch(() => {});
+});
+// 소리 재료: 짧은 사인/삼각파 음, 걸러낸 잡음
+function tone(f, t, dur, vol, type = "sine", out = snd.master, f2) {
+  const c = snd.ctx, o = c.createOscillator(), g = c.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .008);
+  g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(out); o.start(t); o.stop(t + dur + .05);
+}
+function hiss(t, dur, vol, ftype, freq, q = 1, out = snd.master) {
+  const c = snd.ctx, n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+  n.buffer = snd.noise; n.loop = true;
+  f.type = ftype; f.frequency.value = freq; f.Q.value = q;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  n.connect(f).connect(g).connect(out); n.start(t, Math.random()); n.stop(t + dur + .05);
+  return g;
+}
+const SFX = {
+  tap:    (t) => { tone(880, t, .09, .14, "sine", undefined, 520); hiss(t, .02, .05, "highpass", 3000); },
+  switch: (t) => { hiss(t, .018, .35, "bandpass", 2600, 2); tone(1400, t, .025, .08, "square");      // 딸깍
+                   hiss(t + .07, .02, .22, "bandpass", 1700, 2); },
+  chime:  (t) => [784, 988, 1175].forEach((f, i) => tone(f, t + i * .11, 1.1, .07, "sine")),
+  twinkle:(t) => [1568, 2093, 1760, 2349, 2637].forEach((f, i) => tone(f, t + i * .06, .35, .04, "triangle")),
+  paper:  (t) => { for (let i = 0; i < 6; i++) hiss(t + i * .07 + Math.random() * .03, .09, .12, "bandpass", 2500 + Math.random() * 2500, .8); },
+  tune:   (t) => { const g = hiss(t, .45, .12, "bandpass", 1200, .5); tone(600, t, .4, .03, "sine", undefined, 1500); },
+};
+function sfx(name) {
+  if (!name || !snd.on || !actx()) return;
+  SFX[name](snd.ctx.currentTime + .005);
+}
+
+// 배경음악: 느린 로파이 (78 BPM). Fmaj7 → Em7 → Dm7 → Cmaj7 반복. 16분음표 단위로 0.4초 앞까지 미리 예약
+const BPM = 78, STEP = 60 / BPM / 4;
+const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+const CHORDS = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]];
+const MEL = [72, 74, 76, 79, 81, 84];   // 펜타토닉: 아무거나 골라도 어울림
+function bgmStep(i, t) {
+  const bus = snd.bgmBus, bar = Math.floor(i / 16) % 4, s = i % 16, ch = CHORDS[bar];
+  const swing = (s % 2) ? STEP * .18 : 0, tt = t + swing;
+  if (s === 0) ch.forEach((n, k) => { tone(midi(n), t + k * .018, 3.2, .05, "triangle", snd.epBus); tone(midi(n + 12), t + k * .018, 2.2, .018, "sine", snd.epBus); });
+  if (s === 10) ch.slice(1).forEach((n) => tone(midi(n), tt, 1.4, .03, "triangle", snd.epBus));
+  if (s === 0 || s === 8) tone(midi(ch[0] - 12), t, 1.2, .14, "sine", bus);                                   // 베이스
+  if (s === 0 || s === 7 || s === 8) tone(140, tt, .32, s === 7 ? .18 : .32, "sine", bus, 42);              // 킥
+  if (s === 4 || s === 12) hiss(t, .16, .06, "bandpass", 1800, .7, bus);                                      // 스네어(가볍게)
+  if (s % 2 === 0) hiss(tt, .035, s % 4 ? .018 : .03, "highpass", 7000, 1, bus);                              // 하이햇
+  if (s % 4 === 2 && Math.random() < .3) tone(midi(MEL[Math.floor(Math.random() * MEL.length)]), tt, .9, .03, "sine", snd.epBus);
+  if (Math.random() < .25) hiss(t + Math.random() * STEP, .006, .04, "highpass", 3000, 1, bus);              // LP 잡음
+}
+function bgmTick() {
+  const c = snd.ctx;
+  while (snd.next < c.currentTime + .4) { bgmStep(snd.step++, snd.next); snd.next += STEP; }
+}
+const BGM_FILE = "";   // 음원 파일을 쓰려면 경로 지정 (예: "diorama/bgm.mp3"). 비워 두면 합성 음악
+async function hasFile() { return !!BGM_FILE; }
+function bgmLevel() { return snd.bgmOn ? (snd.ducked ? .15 : 1) : 0; }
+async function setBgm(on) {
+  if (on && !snd.on) setSound(true);   // 라디오를 누른 건 소리를 듣겠다는 뜻 → 소리도 켬
+  snd.bgmOn = on;
+  radioGlow(on);
+  const c = actx(); if (!c) return;
+  if (on) sfx("tune");
+  if (await hasFile()) {
+    if (!snd.audio) { snd.audio = new Audio(BGM_FILE); snd.audio.loop = true; }
+    snd.audio.volume = .5 * bgmLevel();
+    if (snd.bgmOn) snd.audio.play().catch(() => {}); else snd.audio.pause();
+    return;
+  }
+  const t = c.currentTime;
+  snd.bgmBus.gain.cancelScheduledValues(t);
+  snd.bgmBus.gain.setTargetAtTime(bgmLevel(), t + (on ? .35 : 0), on ? .6 : .25);
+  clearTimeout(snd.stopT);
+  if (on && !snd.timer) {
+    if (!snd.epBus) {   // 피아노는 고음을 깎아 먹먹하게 (로파이 느낌)
+      const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1600;
+      snd.epBus = lp; lp.connect(snd.bgmBus);
+    }
+    snd.next = t + .4; snd.step = 0;
+    snd.timer = setInterval(bgmTick, 100);
+  }
+  if (!on && snd.timer) snd.stopT = setTimeout(() => { clearInterval(snd.timer); snd.timer = null; }, 1200);   // 소리가 다 줄어든 뒤 예약 중단
+}
+function duckBgm(on) {   // TV 영상이 나올 땐 음악을 작게
+  snd.ducked = on;
+  if (snd.audio) snd.audio.volume = .5 * bgmLevel();
+  if (snd.ctx) snd.bgmBus.gain.setTargetAtTime(bgmLevel(), snd.ctx.currentTime, .3);
+}
+// 라디오: 켜지면 주파수 창이 빛나고 음표가 피어오름
+const NOTE_TEX = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d"); g.fillStyle = "#ff7fa8"; g.font = "bold 52px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText("♪", 32, 34);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+let noteTimer = null;
+function setupRadio() {
+  const dial = scene.getObjectByName("radio_dial");
+  if (dial) { dial.material = dial.material.clone(); dial.userData.glow = { r:0, g:0, b:0 }; }
+}
+function radioGlow(on) {
+  const dial = scene.getObjectByName("radio_dial"), root = props.radio && props.radio.root;
+  if (dial) { const c = on ? { r:1, g:.7, b:.3 } : { r:0, g:0, b:0 }; dial.userData.glow = c; gsap.to(dial.material.emissive, { ...c, duration:.4 }); }
+  clearInterval(noteTimer); noteTimer = null;
+  if (!on || !root) return;
+  const spk = scene.getObjectByName("radio_spk");
+  noteTimer = setInterval(() => {
+    if (document.hidden) return;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:NOTE_TEX, transparent:true, depthWrite:false, opacity:0 }));
+    s.raycast = () => {}; s.scale.setScalar(0.07);
+    new THREE.Box3().setFromObject(spk || root).getCenter(s.position); s.position.y += 0.1;
+    scene.add(s);
+    const dx = (Math.random() - .5) * .12;
+    gsap.to(s.material, { opacity:.9, duration:.4 });
+    gsap.to(s.material, { opacity:0, duration:.6, delay:1.2 });
+    gsap.to(s.position, { y:s.position.y + .3, x:s.position.x + dx, duration:1.8, ease:"sine.out",
+      onComplete:() => { scene.remove(s); s.material.dispose(); } });
+  }, 900);
+}
+
+// ---------- 이스터에그: 러그 앞 귀퉁이를 들추면 밑에 숨은 인형 ----------
+// 러그는 평소 펼쳐져 있음. 누르면 앞 귀퉁이가 살짝 들춰지고 밑에 캐릭터 종이 조각이 보임
+const RUG_HINT = 0, RUG_OPEN = 0.98;   // 평소엔 평평(귀퉁이 0.46 까지는 투명 여백), 누르면 앞 귀퉁이만 살짝
+const rugFx = { s:RUG_HINT, open:false };
+function setupRug() {
+  const rug = scene.getObjectByName("rug_mat"), doll = props.doll && props.doll.root;
+  if (!rug || !props.rug) return;
+  rugFx.mesh = rug;
+  const pos = rug.geometry.attributes.position;
+  rug.geometry.computeBoundingBox(); const bb = rug.geometry.boundingBox;
+  rugFx.corner = new THREE.Vector2(bb.max.x, bb.max.z);   // 카메라 쪽(+x, +z) 귀퉁이부터 들춤
+  rugFx.dir = new THREE.Vector2(bb.min.x - bb.max.x, bb.min.z - bb.max.z).normalize();
+  if (doll) {
+    // 캐릭터 종이 조각: 바닥에 납작하게 (러그보다 아래라 러그가 덮고 있으면 안 보임)
+    const tex = new THREE.TextureLoader().load("diorama/egg_paper.png"); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.337),   // 그림 비율 238:223
+      new THREE.MeshStandardMaterial({ map:tex, emissiveMap:tex, emissive:new THREE.Color(.15, .15, .15), alphaTest:.5, roughness:.9, envMapIntensity:.4 }));   // 굿즈 사진처럼 살짝 발광 (회색으로 묻히지 않게)
+    m.userData.glow = { r:.15, g:.15, b:.15 };
+    m.rotation.x = -Math.PI / 2; m.position.y = 0.0055;   // 마루 줄눈(높이 0.004) 위, 러그(0.008) 아래 m.receiveShadow = true;
+    m.userData.prop = "doll"; doll.add(m);
+    props.doll.meshes.push(m); pickables.push(m);
+  }
+  rugFx.base = Float32Array.from(pos.array);
+  rugPeel(rugFx.s);
+}
+function rugPeel(s) {
+  const geo = rugFx.mesh.geometry, pos = geo.attributes.position, b = rugFx.base, c = rugFx.corner, d0 = rugFx.dir;
+  const TH = 1.2, LB = 0.3, R = LB / TH;   // 들리는 각도(약 70°, 넘어가지 않게), 둥글게 휘는 부분 길이
+  for (let i = 0; i < pos.count; i++) {
+    const x = b[i * 3], y = b[i * 3 + 1], z = b[i * 3 + 2];
+    const d = (x - c.x) * d0.x + (z - c.y) * d0.y;   // 귀퉁이에서 안쪽으로 얼마나 들어왔나
+    if (d >= s) { pos.setXYZ(i, x, y, z); continue; }
+    const u = s - d; let dd, hh;                     // 접히는 선에서 귀퉁이 쪽으로 떨어진 거리
+    if (u < LB) { const f = u / R; dd = s - R * Math.sin(f); hh = R * (1 - Math.cos(f)); }
+    else { dd = s - R * Math.sin(TH) - (u - LB) * Math.cos(TH); hh = R * (1 - Math.cos(TH)) + (u - LB) * Math.sin(TH); }
+    pos.setXYZ(i, x + d0.x * (dd - d), y + hh, z + d0.y * (dd - d));
+  }
+  pos.needsUpdate = true; geo.computeVertexNormals();
+}
+function rugToggle() {
+  if (!rugFx.base) return;
+  rugFx.open = !rugFx.open;
+  gsap.to(rugFx, { s: rugFx.open ? RUG_OPEN : RUG_HINT, duration:1.3, ease:"power2.inOut", overwrite:true, onUpdate:() => rugPeel(rugFx.s) });
 }
 // TV 화면(3D)의 앞면 네 귀퉁이를 화면 좌표로 투영해 플레이어 위치·크기를 매 프레임 맞춤
 const _v = new THREE.Vector3();

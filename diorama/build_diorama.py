@@ -174,7 +174,16 @@ def garland(tag, pins, sag, step=0.15):
 
 LX, BY_ = -1.965, 1.965          # 벽 표면 바로 앞
 garland("L", [(LX, -1.9, 2.3), (LX, -1.15, 1.47), (LX, 0.05, 1.47), (LX, 0.9, 2.2), (LX, 1.95, 2.3)], 0.17)
-garland("B", [(-1.95, BY_, 2.3), (-0.75, BY_, 2.02), (0.45, BY_, 2.3)], 0.2)   # 액자(x≈0.73~1.49) 앞에서 끝남
+# 뒷벽 줄은 없앰: 미니전구는 창문 벽에만 (뒷벽 TV 위는 코르크보드 자리)
+
+# ---------- 코르크보드 (뒷벽 TV 위. 클릭: 굿즈샵 상품) ----------
+# x = -0.2 는 아래 수납장·TV 중심(CX)과 같음
+PAL["cork"] = "#D2A877"; PAL["cork_frame"] = "#B98A5E"
+cb = group("prop_corkboard")
+cb.location = (-0.2, 1.985, 2.08); cb.rotation_euler = (0, 0, -math.pi / 2)   # 뒷벽 TV 위. 아래 끝(1.82)이 안테나 끝(1.73)보다 위
+# 회전: 보드 앞면(로컬 +x)이 방 쪽(-y)을 보게
+box("cork_frame", (0, 0, 0), (0.03, 0.64, 0.52), "cork_frame", 0.012, cb, rough=0.6)
+box("cork_board", (0.009, 0, 0), (0.02, 0.58, 0.46), "cork", 0.004, cb, rough=0.95)   # 굿즈 사진·압정은 웹에서 붙임
 
 # ---------- 침대: 원목 침대 형태(둥근 볼 기둥 + 완만한 곡선 헤드보드 + 접힌 이불), 색은 기존 라벤더/크림 ----------
 bed = group("bed")
@@ -462,6 +471,28 @@ _finish(sh, "deskpink", lamp, rough=0.4)
 ball("lamp_cap", tuple(S - o * 0.07), (0.052, 0.052, 0.052), "deskpink", lamp)
 ball("lamp_bulb", tuple(S + o * 0.01), (0.045, 0.045, 0.045), "bulb", lamp, rough=0.2)
 
+# 레트로 라디오 (책상 왼쪽, 클릭: 배경음악 켜기/끄기)
+# 앞면이 카메라 쪽(-y). 왼쪽 둥근 스피커 + 오른쪽 주파수 창(radio_dial: 웹에서 켜지면 빛남) + 손잡이 + 안테나
+PAL["radio"] = "#9FD8C8"; PAL["radio_dk"] = "#7FC0AE"
+radio = group("prop_radio")
+RX, RY, RZ = dx - 0.47, dy + 0.06, 0.825        # 책상 윗면 위
+RW, RD, RH = 0.27, 0.11, 0.155
+box("radio_body", (RX, RY, RZ + RH / 2), (RW, RD, RH), "radio", 0.025, radio, rough=0.45)
+box("radio_face", (RX, RY - RD / 2 - 0.002, RZ + RH / 2 - 0.005), (RW - 0.03, 0.006, RH - 0.04), "cream", 0.012, radio, rough=0.5)
+FRONT = RY - RD / 2 - 0.006
+cyl("radio_spk", (RX - 0.055, FRONT, RZ + 0.072), 0.045, 0.006, "radio_dk", radio, rot=(math.pi / 2, 0, 0), bevel=0.003)
+for k in range(4):   # 스피커 가로줄 무늬
+    box(f"radio_grill{k}", (RX - 0.055, FRONT - 0.004, RZ + 0.045 + k * 0.018), (0.07 - abs(k - 1.5) * 0.012, 0.003, 0.005), "cream", 0.001, radio)
+box("radio_dial", (RX + 0.06, FRONT - 0.001, RZ + 0.095), (0.09, 0.004, 0.035), "bulb", 0.004, radio, rough=0.3)
+box("radio_needle", (RX + 0.05, FRONT - 0.004, RZ + 0.095), (0.003, 0.002, 0.03), "pink", 0, radio)
+for i, kx in enumerate((RX + 0.035, RX + 0.085)):
+    cyl(f"radio_knob{i}", (kx, FRONT - 0.006, RZ + 0.045), 0.014, 0.014, "deskpink_dk", radio, rot=(math.pi / 2, 0, 0), bevel=0.004)
+for sx_ in (-1, 1):   # 손잡이 기둥
+    box(f"radio_hpost{sx_}", (RX + sx_ * 0.08, RY, RZ + RH + 0.02), (0.014, 0.03, 0.04), "radio_dk", 0.005, radio)
+box("radio_handle", (RX, RY, RZ + RH + 0.04), (0.18, 0.03, 0.014), "radio_dk", 0.006, radio)
+rod("radio_ant", (RX + 0.11, RY + 0.02, RZ + RH), (RX + 0.2, RY + 0.06, RZ + RH + 0.22), 0.004, "chrome", radio)
+ball("radio_ant_tip", (RX + 0.2, RY + 0.06, RZ + RH + 0.22), (0.009, 0.009, 0.009), "chrome", radio)
+
 # 핑크 스툴 (의자 대신)
 stool = group("stool")
 sx, sy = dx, dy - 0.68
@@ -479,7 +510,7 @@ box("frame_border", (dx, 1.99, 1.88), (0.75, 0.04, 0.9), "white", 0.03, fr)
 box("frame_inner", (dx, 1.965, 1.88), (0.6, 0.02, 0.75), "cream", 0, fr, emit=0.15)
 
 # ---------- 러그 ----------
-rug = group("rug")
+rug = group("prop_rug")   # 클릭하면 앞쪽 귀퉁이가 들춰짐 (이스터에그: 밑에 인형)
 # 둥근 러그(방 앞쪽, 책상·의자와 같은 줄): 긴 축은 침대 발치와 나란히(y). 무늬는 웹에서 rug_round.png(투명 배경)로 입힘
 bpy.ops.mesh.primitive_plane_add(size=1, location=(0.85, -0.55, 0.008))
 rp = bpy.context.active_object
@@ -487,6 +518,11 @@ rp.name = "rug_mat"
 rp.scale = (1.7, 2.3, 1)        # 이미지 비율 1.48 : 1 (기존의 1.3배)
 bpy.ops.object.transform_apply(scale=True)
 _finish(rp, "lavender", rug, rough=1.0, smooth=False)
+
+# ---------- 이스터에그: 러그 밑에 숨은 캐릭터 종이 조각 ----------
+# 자리만 잡아 둠. 종이(egg_paper.png)는 웹에서 이 자리 바닥에 붙임. 러그 앞 귀퉁이 아래
+dl = group("prop_doll")
+dl.location = (1.27, -1.12, 0.0); dl.rotation_euler = (0, 0, 0.6)   # 살짝만 들춰도 다 보이게 귀퉁이 가까이
 
 # ---------- 조명 / 카메라 / 렌더 ----------
 world = bpy.data.worlds.get("World") or bpy.data.worlds.new("World")
