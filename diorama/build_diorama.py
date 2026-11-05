@@ -119,9 +119,9 @@ room = group("room")
 box("floor", (0, 0, -0.1), (4.3, 4.3, 0.2), "floor", 0.03, room, rough=0.7)
 for i in range(-3, 4):  # 마루 줄눈
     box(f"plank_{i}", (i * 0.6, 0, 0.002), (0.012, 4.2, 0.004), "floor_edge", 0, room)
-box("wall_L", (-2.075, 0.075, 1.3), (0.15, 4.15, 2.6), "wall", 0.03, room, rough=0.8)
+box("wall_L", (-2.075, 0, 1.3), (0.15, 4.3, 2.6), "wall", 0.03, room, rough=0.8)
 box("wall_B", (0, 2.075, 1.3), (4.3, 0.15, 2.6), "wall", 0.03, room, rough=0.8)
-box("wall_L_cap", (-2.075, 0.075, 2.61), (0.17, 4.17, 0.03), "wall_edge", 0.01, room)
+box("wall_L_cap", (-2.075, 0, 2.61), (0.17, 4.32, 0.03), "wall_edge", 0.01, room)
 box("wall_B_cap", (0.085, 2.075, 2.61), (4.15, 0.17, 0.03), "wall_edge", 0.01, room)
 
 # ---------- 창문 (왼쪽 벽) ----------
